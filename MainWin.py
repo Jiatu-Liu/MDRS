@@ -5,8 +5,10 @@ notes:
 
 1, install larch and gsas2 in your python environment
 2, download Akihito Takeuchi's draggabletabwidget.py and put it in the same folder
+3, install azint by Clemens Weninger: conda install -c maxiv azint
 
 acknowledgement:
+
 Mahesh Ramakrishnan's code on XRD image integration
 
 """
@@ -83,19 +85,8 @@ class ShowData(QMainWindow):
         myscreen = app.primaryScreen()
         screen_height = myscreen.geometry().height()
         self.screen_width = myscreen.geometry().width()
-        self.setGeometry(int(self.screen_width * .1), int(screen_height * .1), int(self.screen_width * .85),
+        self.setGeometry(0, int(screen_height * .1), int(self.screen_width),
                          int(screen_height * .85))
-
-        bar = self.menuBar()
-        file = bar.addMenu('File')
-        actionload = QAction('Load setup',self)
-        actionload.setShortcut('Ctrl+L')
-        actionload.triggered.connect(self.file_load)
-        file.addAction(actionload)
-        actionsave = QAction('Save setup', self)
-        actionsave.setShortcut('Ctrl+S')
-        actionsave.triggered.connect(self.file_save)
-        file.addAction(actionsave)
 
         cframe = QFrame()
         cframe.setMaximumHeight(int(screen_height * .05))
@@ -106,6 +97,7 @@ class ShowData(QMainWindow):
         self.sliderset.clicked.connect(self.setslider)
         self.slideradded = False # may not the best way
         self.slidervalues = []
+        self.initialized = False
 
         cframe.setLayout(self.horilayout)
         self.setCentralWidget(cframe)
@@ -130,38 +122,139 @@ class ShowData(QMainWindow):
 
         self.gdockdict = dict() # a dic for all top-level graph dock widgets: xas, xrd,...
         self.methodict = dict() # a dic for all available methods: xas, xrd,... there should be only one type each!
-        self.methodclassdict = {'xas_1':XAS,
-                                'xas_2':XAS,
-                                'xrd_1':XRD,
-                                'xrd_2':XRD,
-                                'pl':PL,
-                                'refl':Refl} # a dic for preparing corresponding Class
+        self.data_read_dict = {'20220720_inform': {'xas': XAS_INFORM_1, 'xrd': XRD_INFORM_1},
+                               '20220720_inform_xrd': {'xas': XAS_INFORM_1, 'xrd': XRD_INFORM_1_ONLY},
+                               '20210738_battery': {'xas': XAS_BATTERY_1, 'xrd': XRD_BATTERY_1}}
+
+        data_read = QMenu('Data Read Mode', self)
+        read_mode_group = QActionGroup(data_read)
+        for read_mode in self.data_read_dict:
+            action = QAction(read_mode,data_read,checkable=True)
+            data_read.addAction(action)
+            read_mode_group.addAction(action)
+
+        read_mode_group.setExclusive(True)
+        read_mode_group.triggered.connect(self.choose_data_read_mode)
+
+        bar = self.menuBar()
+        bar.addMenu(data_read)
+
+        file = bar.addMenu('File')
+        actionload = QAction('Load setup', self)
+        actionload.setShortcut('Ctrl+L')
+        actionload.triggered.connect(self.file_load)
+        file.addAction(actionload)
+        actionsave = QAction('Save setup', self)
+        actionsave.setShortcut('Ctrl+S')
+        actionsave.triggered.connect(self.file_save)
+        file.addAction(actionsave)
 
         self.checkmethods = {} # checkboxes of top level
         self.cboxwidget = {}
         self.subcboxverti = {}
-        self.path_name_dict = {'xas_1':{'directory':r"W:\balder\20220720\2022042008",
-                                      'raw file': 'Coat7_12S_FAPI_Br06M_Cl01M_RT_1',
-                                      'energy range (eV)':'13435-14075'},
-                               'xas_2': {'directory': r"W:\balder\20220720\2022042008",
-                                       'raw file': 'Coat7_12S_FAPI_Br06M_Cl01M_RT_1',
-                                       'energy range (eV)': '12935-13435'},
-                               'xrd_1':{'directory':r"C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220720", #r"W:\balder\20220720\2022042008",
-                                      'raw file': 'Coat7_12S_FAPI_Br06M_Cl01M_RT_51_data_000001',
-                                      'integration file appendix':'_resultFile.h5',
-                                      'PONI file':'LaB6_12935eV.poni',
-                                      'start from':'1'},
-                               'xrd_2': {'directory': r"C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220720", #r"W:\balder\20220720\2022042008",
-                                       'raw file': 'Coat7_12S_FAPI_Br06M_Cl01M_heat_52_data_000001',
-                                       'integration file appendix': '_resultFile.h5',
-                                       'PONI file': 'LaB6_12935eV.poni',
-                                       'start from': '1'},
-                               'pl':{'directory':r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
-                                     'raw file': 'fAPbI3_MACl_0M_coat20'},
-                               'refl':{'directory':r"W:\balder\20220720\2022042008",
-                                     'raw file': 'Coat_07_Br06_Refl'}}
+        # [xas,xrd]
+        name_list = [['Coat1_FAPI_05MCl_2',
+                      'Coat1_FAPI_05MCl_12'],
+                     # ['Coat1_FAPI_05MCl_Tramp_1',
+                     #  'Coat1_FAPI_05MCl_Tramp_14'],
+                     # ['Coat4_2S_FAPI_MACl05M_2',
+                     #  'Coat4_2S_FAPI_MACl05M_26'],
+                     # ['Coat4b_2S_FAPI_MACl05M_XAS_XRD_100C_1',
+                     #  'Coat4b_2S_FAPI_MACl05M_XAS_XRD_100C_38'],
+                     # ['Coat4c_2S_FAPI_MACl05M_XAS_XRD_RT_1',
+                     #  'Coat4c_2S_FAPI_MACl05M_XAS_XRD_RT_39'],
+                     # ['Coat5_12S_FAPI_MACl01M_XAS_XRD_3',
+                     #  'Coat5_12S_FAPI_MACl01M_XAS_XRD_33'],
+                     # ['Coat5_12S_FAPI_MACl01M_XAS_XRD_100C_2',
+                     #  'Coat5_12S_FAPI_MACl01M_XAS_XRD_100C_37'],
+                     # ['Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_1',
+                     #  'Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_40'],
+                     # ['Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_2',
+                     #  'Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_41'],
+                     ['Coat6_12S_FAPI_Br02M_Cl01M_RT_6',
+                      'Coat6_12S_FAPI_Br02M_Cl01M_RT_48'],
+                     ['Coat6b_12S_FAPI_Br02M_Cl01M_heat_1',
+                      'Coat6b_12S_FAPI_Br02M_Cl01M_heat_53'],
+                     ['Coat7_12S_FAPI_Br06M_Cl01M_RT_1',
+                      'Coat7_12S_FAPI_Br06M_Cl01M_RT_51'],
+                     ['Coat7_12S_FAPI_Br06M_Cl01M_heat_1',
+                      'Coat7_12S_FAPI_Br06M_Cl01M_heat_52']]
+        self.path_name_dict = {}
+        for k in range(len(name_list)):
+        # for k in len(name_list) - np.arange(2):
+            self.path_name_dict['xrd_' + str(k + 1)] = {'directory': r"W:\balder\20220720\2022042008",
+                                                        'raw file': name_list[k][1] + '_data_000001',
+                                                        'integration file appendix': '_resultFile.h5',
+                                                        'PONI file': 'LaB6_12935eV.poni',
+                                                        'refine dir': r'C:\Users\jialiu\OneDrive - Lund University'
+                                                                       r'\Dokument\Data_20220720_Inform',
+                                                        'refine subdir': 'Refine_Coat7_RT',
+                                                        'data files': 'data_result*20phases',
+                                                        'refinement file': 'refine_coat7_rt_all.gpx'}
+            self.path_name_dict['xas_' + str(k + 1)] = {'directory': r"W:\balder\20220720\2022042008",
+                                       'raw file': name_list[k][0],
+                                       'energy range (eV)': '12935-13435'}
+
+        # self.path_name_dict['xas_' + str(len(name_list) + 2)] = {'directory': r"W:\balder\20220720\2022042008",
+        #                                                          'raw file': name_list[-2][0],
+        #                                                          'energy range (eV)': '13435-14075'}
+        #
+        # self.path_name_dict['xas_' + str(len(name_list) + 3)] = {'directory': r"W:\balder\20220720\2022042008",
+        #                                                          'raw file': name_list[-1][0],
+        #                                                          'energy range (eV)': '13435-14075'}
+
+        name_list_refl = ['Coat1_FAPbI_Cl05M_Refl',
+                         # 'Coat04_Refl',
+                         # 'Coat04b_Refl',
+                         # 'Coat04c_Refl',
+                         # 'Coat05_Refl',
+                         # 'Coat05b_Refl',
+                         # 'Coat_06_Br02_Refl',
+                         # 'Coat_07_Br06_Refl',
+                         # 'Coat_07B_Refl',
+                         # 'Coat_07B_after_Refl',
+                          'Ref_test_Refl',
+                          'Ref_airblade_Refl',
+                          'Ref_heating_after_airblade_Refl',
+                          'Ref_heat_Refl',
+                          'Ref_heat_150_Refl',
+                          'Ref_heat_150_again_Refl']
+
+        # self.path_name_dict['pl'] = {'directory':r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
+        #                              'raw file': 'fAPbI3_MACl_0M_coat20'}
+        for index in range(len(name_list_refl)):
+            self.path_name_dict['refl_' + str(index + 1)] = {'directory':r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
+                                                             'raw file': name_list_refl[index],
+                                                             'align data number':'3022',
+                                                             'to time':'2022-04-23T12:02:44'}
+
+        self.path_name_widget = {}
+
+        self.methodclassdict = {}  # a dic for preparing corresponding Class
+
+        self.repeat = len(name_list)  # number of xas or xrd
+
+        for index in range(self.repeat):  # default to inform mode
+            self.methodclassdict['xrd_' + str(index + 1)] = self.data_read_dict['20220720_inform']['xrd']
+            self.methodclassdict['xas_' + str(index + 1)] = self.data_read_dict['20220720_inform']['xas']
+
+        # self.methodclassdict['pl'] = PL
+        for index in range(len(name_list_refl)):
+            self.methodclassdict['refl_' + str(index + 1)] = Refl
+
         # C:\Users\jialiu\OneDrive - Lund University\Dokument\TestEXAFS\\
-        self.ini_methods_cboxes()
+
+    # def mouseMoveEvent(self, event):
+    #     print(event.pos())
+
+    def choose_data_read_mode(self, action):
+        for index in range(self.repeat):
+            self.methodclassdict['xrd_' + str(index + 1)] = self.data_read_dict[action.text()]['xrd']
+            self.methodclassdict['xas_' + str(index + 1)] = self.data_read_dict[action.text()]['xas']
+
+        if not self.initialized:
+            self.ini_methods_cboxes()
+            self.initialized = True
 
     def file_load(self):
         name = QFileDialog.getOpenFileName(self, 'Load Setup')
@@ -192,6 +285,7 @@ class ShowData(QMainWindow):
 
             if not self.slideradded:
                 self.setslider()
+                self.slideradded = True
                 # this function is only to memorize the save relative positions for different data
                 if list(f['slider']['memorized']) is not []:
                     for mem in list(f['slider']['memorized']):
@@ -243,6 +337,7 @@ class ShowData(QMainWindow):
                             pipelines.create_dataset(subkey, data=tempstr)
 
     def ini_methods_cboxes(self):
+
         for key in self.methodclassdict:
             self.checkmethods[key] = QCheckBox(key)
             self.checkmethods[key].stateChanged.connect(self.graphdock)
@@ -250,11 +345,11 @@ class ShowData(QMainWindow):
             self.cboxwidget[key].setObjectName(key)  # important for .parent recognition
             cboxverti = QVBoxLayout()
             cboxfiles = QFormLayout()
+            self.path_name_widget[key] = {}
             for subkey in self.path_name_dict[key]:
-                temptext = self.path_name_dict[key][subkey]
-                self.path_name_dict[key][subkey] = QLineEdit(temptext)
-                self.path_name_dict[key][subkey].setPlaceholderText(subkey)
-                cboxfiles.addRow(subkey, self.path_name_dict[key][subkey])
+                self.path_name_widget[key][subkey] = QLineEdit(self.path_name_dict[key][subkey])
+                self.path_name_widget[key][subkey].setPlaceholderText(subkey)
+                cboxfiles.addRow(subkey, self.path_name_widget[key][subkey])
 
             cboxverti.addLayout(cboxfiles)
             cboxverti.addWidget(self.checkmethods[key])
@@ -272,12 +367,14 @@ class ShowData(QMainWindow):
         for key in self.methodict:
             timerange.append(self.methodict[key].time_range(self))
 
-        timerangearray = np.array(timerange)
+        self.timerangearray = np.array(timerange) * 1000 # in milliseconds ! search for [:-3]
 
         if not self.slideradded:
             self.slider = QSlider(Qt.Horizontal)
             self.slider.setObjectName('theSlider')
-            self.slider.setRange(np.min(timerangearray[:,0]), np.max(timerangearray[:,1]))
+            self.slider.setRange(0, np.max(self.timerangearray[:,1]) - np.min(self.timerangearray[:,0]))
+            self.slider.setPageStep(500)
+            self.slider.setSingleStep(50)
             # self.slider.setRange(min(timerange, key=lambda x:x[0]), max(timerange, key=lambda x:x[1]))
             # self.slider.setTickPosition(QSlider.TicksAbove)
             # self.slider.setTickInterval(5)
@@ -297,7 +394,9 @@ class ShowData(QMainWindow):
             self.horilayout.addWidget(self.clr)
             self.slideradded = True
         else:
-            self.slider.setRange(np.min(timerangearray[:, 0]), np.max(timerangearray[:, 1]))
+            self.slider.setRange(0, np.max(self.timerangearray[:, 1]) - np.min(self.timerangearray[:, 0]))
+
+        self.slider.setValue(self.slider.minimum() + 1)
 
     def delslider(self):
         if self.slideradded:
@@ -313,7 +412,7 @@ class ShowData(QMainWindow):
 
     def memorize_curve(self):
         # memorize the slider value for re-load
-        self.slidervalues.append(self.slider.value())
+        self.slidervalues.append(self.slider.value()) # need to divided by 1000 ???
         for key in self.gdockdict: # key as xas, xrd,...
             # prepare the data, curve
             data_mem, curve_mem = self.methodict[key].data_curve_copy(self.methodict[key].data_timelist[0])
@@ -321,21 +420,22 @@ class ShowData(QMainWindow):
             self.methodict[key].curve_timelist.append(curve_mem)
             # plot the curve onto corresponding tabgraph
             for subkey in self.methodict[key].curve_timelist[0]: # subkey as raw, norm,...
-                for entry in self.methodict[key].curve_timelist[0][subkey]: # entry as I0, I1,...
-                    # this is for occasions when there is only .image
-                    # and not including truncated, peaks in xrd
-                    if data_mem[subkey][entry].data is not None and \
-                            entry not in ['find peaks', 'truncated']:
-                        curve_mem[subkey][entry] = \
-                            self.gdockdict[key].tabdict[subkey].tabplot.plot(name=self.methodict[key].dynamictitle + ' ' + entry)
-                        # set data for each curve
-                        curve_mem[subkey][entry].setData(data_mem[subkey][entry].data)
-                        if data_mem[subkey][entry].pen: curve_mem[subkey][entry].setPen(data_mem[subkey][entry].pen)
-                        if data_mem[subkey][entry].symbol: curve_mem[subkey][entry].setSymbol(data_mem[subkey][entry].symbol)
-                        if data_mem[subkey][entry].symbol:
-                            curve_mem[subkey][entry].setSymbolSize(data_mem[subkey][entry].symbolsize)
-                        if data_mem[subkey][entry].symbol:
-                            curve_mem[subkey][entry].setSymbolBrush(data_mem[subkey][entry].symbolbrush)
+                if subkey != 'refinement single':
+                    for entry in self.methodict[key].curve_timelist[0][subkey]: # entry as I0, I1,...
+                        # this is for occasions when there is only .image
+                        # and not including truncated, peaks in xrd
+                        if data_mem[subkey][entry].data is not None and \
+                                entry not in ['find peaks', 'truncated']:
+                            curve_mem[subkey][entry] = \
+                                self.gdockdict[key].tabdict[subkey].tabplot.plot(name=self.methodict[key].dynamictitle + ' ' + entry)
+                            # set data for each curve
+                            curve_mem[subkey][entry].setData(data_mem[subkey][entry].data)
+                            if data_mem[subkey][entry].pen: curve_mem[subkey][entry].setPen(data_mem[subkey][entry].pen)
+                            if data_mem[subkey][entry].symbol: curve_mem[subkey][entry].setSymbol(data_mem[subkey][entry].symbol)
+                            if data_mem[subkey][entry].symbol:
+                                curve_mem[subkey][entry].setSymbolSize(data_mem[subkey][entry].symbolsize)
+                            if data_mem[subkey][entry].symbol:
+                                curve_mem[subkey][entry].setSymbolBrush(data_mem[subkey][entry].symbolbrush)
 
     def clear_curve(self):
         # clear the slider value for re-load
@@ -367,7 +467,8 @@ class ShowData(QMainWindow):
             self.gdockdict[checkbox.text()] = DockGraph(checkbox.text())
             self.gdockdict[checkbox.text()].gendock(self)
             self.gdockdict[checkbox.text()].gencontroltab(self)
-            self.methodict[checkbox.text()] = self.methodclassdict[checkbox.text()](self.path_name_dict[checkbox.text()]) # create a method object, e.g. an XAS object
+            # create a method object, e.g. an XAS object
+            self.methodict[checkbox.text()] = self.methodclassdict[checkbox.text()](self.path_name_widget[checkbox.text()])
             self.methodict[checkbox.text()].tabchecks(self, checkbox.text()) # show all checkboxes, e.g. raw, norm,...
             # self.slider.valueChanged.connect(self.methodict[checkbox.text()].update_timepoints)
         else:
@@ -418,8 +519,9 @@ class ShowData(QMainWindow):
                 if self.methodict[tooltabname].data_timelist[0][toolitemname][checkbox.text()].image is not None:
                     self.gdockdict[tooltabname].tabdict[toolitemname].tabplot.clear()
 
-    def update_timepoints(self, slidervalue):
-        slidertime = datetime.fromtimestamp(slidervalue).strftime('%Y%m%d-%H:%M:%S')
+    def update_timepoints(self, slidervalue): # slidervalue in ms !
+        slidervalue = (slidervalue + np.min(self.timerangearray[:, 0])) / 1000
+        slidertime = datetime.fromtimestamp(slidervalue).strftime('%Y%m%d-%H:%M:%S.%f')[:-3] # trim to ms !
         self.sliderlabel.setText(slidertime)
         # maybe put a legend for each curve displayed, just show the slider time
         for key in self.gdockdict:  # xas, xrd,...
@@ -431,6 +533,7 @@ class ShowData(QMainWindow):
         if self.slideradded == False: # a way to prevent crash; may not the best way
             self.setslider()
             self.slider.setValue(self.slider.minimum() + 1) # this works!!!
+            self.slideradded = True
 
         parawidget = self.sender() # rbkg, kmin,...
         toolitemname = parawidget.parent().objectName() # post edge, chi(k),...
@@ -471,12 +574,19 @@ class ShowData(QMainWindow):
                 self.methodict[tooltabname].show_phase(self)
 
         else:
+            if tooltabname[0:3] == 'xas' and toolitemname == 'normalizing' and \
+                    parawidget.objectName()[0:8] == 'Savitzky':
+                self.methodict[tooltabname].filtered = True
+
             self.methodict[tooltabname].data_process(True) # True means the parameters have changed
             self.update_curves(tooltabname)
 
     def update_curves(self, key):
         for subkey in self.gdockdict[key].tabdict: # raw, norm,...
             self.gdockdict[key].tabdict[subkey].tabplot.setTitle(self.methodict[key].dynamictitle)
+            if subkey == 'refinement single':
+                self.gdockdict[key].tabdict[subkey].tabplot.setTitle(
+                    self.methodict[key].refinedata[self.methodict[key].parameters[subkey]['data number'].setvalue])
             for timelist in range(len(self.methodict[key].curve_timelist)): # timelist: 0, 1,...
                 for entry in self.methodict[key].curve_timelist[timelist][subkey]: # I0, I1,...
                     curveobj = self.methodict[key].curve_timelist[timelist][subkey][entry]
