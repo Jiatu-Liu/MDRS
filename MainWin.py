@@ -5,7 +5,7 @@ notes:
 
 1, install larch and gsas2 in your python environment
 2, download Akihito Takeuchi's draggabletabwidget.py and put it in the same folder
-3, install azint by Clemens Weninger: conda install -c maxiv azint
+3, install azint by Clemens Weninger: conda install -c maxiv azint; this might not work in some windows machine
 
 acknowledgement:
 
@@ -118,11 +118,12 @@ class ShowData(QMainWindow):
         self.controls.setWidget(self.controltabs)
         self.controls.setFloating(False)
 
-        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.controls)
+        self.addDockWidget(Qt.BottomDockWidgetArea, self.controls)
 
         self.gdockdict = dict() # a dic for all top-level graph dock widgets: xas, xrd,...
         self.methodict = dict() # a dic for all available methods: xas, xrd,... there should be only one type each!
         self.data_read_dict = {'20220720_inform': {'xas': XAS_INFORM_1, 'xrd': XRD_INFORM_1},
+                               '20221015_inform': {'xas':XAS_INFORM_2, 'xrd': XRD_INFORM_2},
                                '20220720_inform_xrd': {'xas': XAS_INFORM_1, 'xrd': XRD_INFORM_1_ONLY},
                                '20210738_battery': {'xas': XAS_BATTERY_1, 'xrd': XRD_BATTERY_1}}
 
@@ -153,7 +154,7 @@ class ShowData(QMainWindow):
         self.cboxwidget = {}
         self.subcboxverti = {}
         # [xas,xrd]
-        name_list = [['Coat1_FAPI_05MCl_2',
+        name_list = [['perovskite_test_05s_002', # 'Coat1_FAPI_05MCl_2',
                       'Coat1_FAPI_05MCl_12'],
                      # ['Coat1_FAPI_05MCl_Tramp_1',
                      #  'Coat1_FAPI_05MCl_Tramp_14'],
@@ -182,7 +183,7 @@ class ShowData(QMainWindow):
         self.path_name_dict = {}
         for k in range(len(name_list)):
         # for k in len(name_list) - np.arange(2):
-            self.path_name_dict['xrd_' + str(k + 1)] = {'directory': r"W:\balder\20220720\2022042008",
+            self.path_name_dict['xrd_' + str(k + 1)] = {'directory': r"Y:\20220660\2022101308",# r"Y:\20220720\2022042008",
                                                         'raw file': name_list[k][1] + '_data_000001',
                                                         'integration file appendix': '_resultFile.h5',
                                                         'PONI file': 'LaB6_12935eV.poni',
@@ -191,34 +192,35 @@ class ShowData(QMainWindow):
                                                         'refine subdir': 'Refine_Coat7_RT',
                                                         'data files': 'data_result*20phases',
                                                         'refinement file': 'refine_coat7_rt_all.gpx'}
-            self.path_name_dict['xas_' + str(k + 1)] = {'directory': r"W:\balder\20220720\2022042008",
+            self.path_name_dict['xas_' + str(k + 1)] = {'directory': r"Y:\20220660\2022101308",# r"Y:\20220720\2022042008",
                                        'raw file': name_list[k][0],
-                                       'energy range (eV)': '12935-13435'}
+                                       'energy range (eV)': '12935-13935'# '12935-13435'
+                                       }
 
-        # self.path_name_dict['xas_' + str(len(name_list) + 2)] = {'directory': r"W:\balder\20220720\2022042008",
+        # self.path_name_dict['xas_' + str(len(name_list) + 2)] = {'directory': r"Y:\20220720\2022042008",
         #                                                          'raw file': name_list[-2][0],
         #                                                          'energy range (eV)': '13435-14075'}
         #
-        # self.path_name_dict['xas_' + str(len(name_list) + 3)] = {'directory': r"W:\balder\20220720\2022042008",
+        # self.path_name_dict['xas_' + str(len(name_list) + 3)] = {'directory': r"Y:\20220720\2022042008",
         #                                                          'raw file': name_list[-1][0],
         #                                                          'energy range (eV)': '13435-14075'}
 
         name_list_refl = ['Coat1_FAPbI_Cl05M_Refl',
-                         # 'Coat04_Refl',
-                         # 'Coat04b_Refl',
-                         # 'Coat04c_Refl',
-                         # 'Coat05_Refl',
-                         # 'Coat05b_Refl',
-                         # 'Coat_06_Br02_Refl',
-                         # 'Coat_07_Br06_Refl',
-                         # 'Coat_07B_Refl',
-                         # 'Coat_07B_after_Refl',
-                          'Ref_test_Refl',
-                          'Ref_airblade_Refl',
-                          'Ref_heating_after_airblade_Refl',
-                          'Ref_heat_Refl',
-                          'Ref_heat_150_Refl',
-                          'Ref_heat_150_again_Refl']
+                          'Coat04_Refl',
+                          'Coat04b_Refl',
+                          'Coat04c_Refl',
+                          'Coat05_Refl',
+                          'Coat05b_Refl',
+                          'Coat_06_Br02_Refl',
+                          'Coat_07_Br06_Refl',
+                          'Coat_07B_Refl',
+                          'Coat_07B_after_Refl']
+                          # 'Ref_test_Refl',
+                          # 'Ref_airblade_Refl',
+                          # 'Ref_heating_after_airblade_Refl',
+                          # 'Ref_heat_Refl',
+                          # 'Ref_heat_150_Refl',
+                          # 'Ref_heat_150_again_Refl']
 
         # self.path_name_dict['pl'] = {'directory':r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
         #                              'raw file': 'fAPbI3_MACl_0M_coat20'}

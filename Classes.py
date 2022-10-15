@@ -26,7 +26,7 @@ from larch.xafs import *
 from larch import *
 from larch.fitting import *
 
-from azint import AzimuthalIntegrator
+# from azint import AzimuthalIntegrator
 
 from struct import unpack
 import struct
@@ -34,7 +34,7 @@ import struct
 from scipy.signal import savgol_filter, savgol_coeffs
 from scipy.signal import find_peaks, peak_widths
 
-sys.path.insert(0,r"C:\Users\jialiu\gsas2full\GSASII")
+sys.path.insert(0,r"C:\Users\balder-user\gsas2full\GSASII")
 import GSASIIindex
 import GSASIIlattice
 import GSASIIscriptable as G2sc
@@ -83,7 +83,7 @@ class DockGraph():
         if self.label[0:3] == 'xrd': self.dockobj.setMinimumWidth(winobj.screen_width * .5)
         else: self.dockobj.setMinimumWidth(winobj.screen_width * .2)
         # self.dockobj.setMinimumWidth(winobj.screen_width * .3)
-        winobj.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.dockobj)
+        winobj.addDockWidget(Qt.BottomDockWidgetArea, self.dockobj)
         if len(winobj.gdockdict) > 3: # only accommodate two docks
             self.dockobj.setFloating(True)
         else: self.dockobj.setFloating(False)
@@ -998,6 +998,80 @@ class XAS_INFORM_1(XAS):
                     data_single = np.zeros((data.shape[0], data.shape[1]), dtype='float32')
                     data.read_direct(data_single)
                     self.output_txt(data_single, index)
+
+            self.load_group(winobj)
+
+        return [self.entrytimesec[0, 0], self.entrytimesec[-1, 1]]
+
+
+class XAS_INFORM_2(XAS):
+    def __init__(self, path_name_widget):
+        super(XAS_INFORM_2, self).__init__(path_name_widget)
+
+    # rewrite for different mode of collection; feed read_data_index the whole data in memory: entrydata (xas, pl, refl),
+    # and/or a file in \process (xrd)
+    def time_range(self, winobj):
+        for key in winobj.path_name_widget:  # to distinguish xas_1, xas_2
+            if self.fileshort == winobj.path_name_widget[key]['raw file'].text():
+                if 'energy range (eV)' in winobj.path_name_widget[key] and \
+                        self.range == winobj.path_name_widget[key]['energy range (eV)'].text():
+                    self.method_name = key
+
+        # read in time
+        if self.entrytimesec == []:  # start, end time in seconds
+            tempfile = os.path.join(self.exportdir, self.fileshort + '_time_in_seconds')
+            if os.path.isfile(tempfile):
+                with open(tempfile, 'r') as f:
+                    self.entrytimesec = np.loadtxt(f)
+            else:
+                self.file = h5py.File(self.filename, 'r')
+                self.filekeys = list(self.file.keys())
+                timesecond_all = []
+                if 'time' in range(len(self.filekeys)):
+                    for timetext in self.file['time']:
+                        timesecond = time.mktime(
+                            datatime.strptime(self.filekeys[t][()].decode(), '%Y-%m-%dT%H:%M:%S.%f').timetuple())
+                        timesecond_all.append(timesecond)
+                    
+                    # make for half time spectrum, as this is back and forth measurement
+                    timesecond_all.append(2 * timesecond_all[-1] - timesecond_all[-2])
+                    timesecond_array = np.array(timesecond_all)
+                    timesecond_start = np.sort(timesecond_array[0:-2], (timesecond_array[0:-2] + timesecond_array[1:-1]) / 2)
+                    timesecond_end = np.sort(timesecond_array[1:-1], (timesecond_array[0:-2] + timesecond_array[1:-1]) / 2)
+                    self.entrytimesec = np.array([timesecond_start,timesecond_end])
+
+        # read in data
+        if self.entrydata == []:  # Energy, I0, I1
+            if os.path.isdir(self.exportdir):  # can also do deep comparison from here
+                for tempname in sorted(glob.glob(self.exportdir + '*_spectrum'),
+                                       key=os.path.getmtime):  # in ascending order
+                    with open(tempname, 'r') as f:
+                        self.entrydata.append(np.loadtxt(f).transpose())
+
+            else:
+                os.mkdir(self.exportdir)
+                with open(tempfile, 'w') as f:
+                    np.savetxt(f, self.entrytimesec)
+
+                self.filekeys = list(self.file.keys()) # I0a, I0b, I1, It, energy
+                data_all = {}
+                for key in self.filekeys:
+                    if key != 'time':
+                        data = self.file[key]
+                        data_single = np.zeros((data.shape[0], data.shape[1]), dtype='float32')
+                        data.read_direct(data_single)                        
+                        data_all[key] = np.array(data_single)
+                
+                print(data_all['I0a'][0,:])
+                for index in range(data.shape[0]): # output format has to be Energy, I0, I1
+                    half_index = int(data.shape[1] / 2 - 1)
+                    self.output_txt(np.array([data_all['energy'][index,0:half_index], # E0
+                                              data_all['I0a'][index,0:half_index] + data_all['I0b'][index,0:half_index], # I0
+                                              data_all['I1'][index,0:half_index]]), index) # I1
+                    
+                    self.output_txt(np.array([data_all['energy'][index,1 + half_index:], # E0
+                                              data_all['I0a'][index,1 + half_index:] + data_all['I0b'][index,1 + half_index:], # I0
+                                              data_all['I1'][index,1 + half_index:]]), index) # I1
 
             self.load_group(winobj)
 
@@ -1950,6 +2024,84 @@ class XRD_INFORM_1(XRD):
                 else: print('you need to import a bundled XAS data')
 
         return [self.entrytimesec[0, 0], self.entrytimesec[-1, 1]]
+
+class XRD_INFORM_2(XRD):
+    def __init__(self, path_name_widget):
+        super(XRD_INFORM_2, self).__init__(path_name_widget)
+
+    def plot_from_prep(self, winobj):  # do integration; some part should be cut out to make a new function
+        # if winobj.slideradded == False:
+        winobj.setslider()
+        # self.slideradded = True
+        # winobj.slideradded = True
+
+        # add: if there is already the file, load it directly
+        ai = AzimuthalIntegrator(self.ponifile, (1065, 1030), 75e-6, 4, [3000, ], solid_angle=True)
+        result = []
+        norm_result = []
+        file = h5py.File(self.filename, 'r')
+        rawdata = file['entry/data/data']
+        mask = np.zeros((rawdata.shape[1], rawdata.shape[2]))
+        rawimg = np.zeros((rawdata.shape[1], rawdata.shape[2]), dtype='uint32')
+        # this xrd data has to be bind with xas
+        # with open(self.ponifile, 'r') as f:
+        #     wavelength = float(f.readlines()[-1].splitlines()[0].partition(' ')[2])
+
+        energy = 1239.8419843320025 / self.wavelength * 10  # wavelength in m, change to nm
+
+        hasxas = False
+        for key in winobj.methodict:  # for xas-xrd correlation
+            if key[0:3] == 'xas' and key[3:] == self.method_name[3:]:
+                self.sync_xas_name = key
+                hasxas = True
+
+        if hasxas:
+            # position = np.where(winobj.methodict[self.sync_xas_name].entrydata[0, 0, ::] - energy > 0)[0][0]
+            # the data point is always the first one in this experiment setup
+            I0 = winobj.methodict[self.sync_xas_name].entrydata[::, 1, 0]
+            I1 = winobj.methodict[self.sync_xas_name].entrydata[::, 2, 0]
+            for index in range(I0.shape[0]):
+                rawdata.read_direct(rawimg, source_sel=np.s_[index, :, :])
+                mask[rawimg == 2 ** 32 - 1] = 1
+                intdata = ai.integrate(rawimg, mask=mask)[0]
+                result.append(intdata)
+                norm_result.append(
+                    intdata / I0[index] / (np.log(I0[index] / I1[index]) + 2.6))
+                # Justus method to normalize. the 2.6 is based on if the observation background can be smoothed successfully
+                # or basically to make the absorption of the materials reach calculated value, in this case 0.6, assuming
+                # thickness and components.
+                self.prep_progress.setValue(int((index + 1) / I0.shape[0] * 100))
+
+            self.output_intg(ai, result, norm_result, self.wavelength)
+            self.read_intg()
+            self.plot_from_load(winobj)
+        else:
+            print('you need to import a bundled XAS data')
+
+        file.close()
+
+    def time_range(self, winobj): # for new data collection, linked to xas, through winobj--which is added only for this purpose
+        for key in winobj.path_name_widget: # to distinguish xrd_1, xrd_2
+            if self.fileshort == winobj.path_name_widget[key]['raw file'].text():
+                self.method_name = key
+
+        if self.entrytimesec == []:
+            if os.path.isfile(self.exportfile):
+                with h5py.File(self.exportfile, 'r') as f:
+                    self.entrytimesec = np.zeros((f['info/abs_time_in_sec'].shape[0], f['info/abs_time_in_sec'].shape[1]), dtype='float')
+                    f['info/abs_time_in_sec'].read_direct(self.entrytimesec)
+            else:
+                hasxas = False
+                for key in winobj.methodict: # for xrd-xas correlation
+                    if key[0:3] == 'xas' and key[3:] == self.method_name[3:]:
+                        self.sync_xas_name = key
+                        hasxas = True
+
+                if hasxas: self.entrytimesec = winobj.methodict[self.sync_xas_name].entrytimesec
+                else: print('you need to import a bundled XAS data')
+
+        return [self.entrytimesec[0, 0], self.entrytimesec[-1, 1]]
+
 
 class XRD_INFORM_1_ONLY(XRD):
     def __init__(self, path_name_widget):
