@@ -92,7 +92,8 @@ class ShowData(QMainWindow):
         cframe.setMaximumHeight(int(screen_height * .05))
 
         self.horilayout = QHBoxLayout()
-        self.sliderset = QPushButton("Set slider")
+        self.sliderset = QPushButton("Set slider(Ctrl+>)")
+        self.sliderset.setShortcut('Ctrl+>')
         self.horilayout.addWidget(self.sliderset)
         self.sliderset.clicked.connect(self.setslider)
         self.slideradded = False # may not the best way
@@ -122,9 +123,10 @@ class ShowData(QMainWindow):
 
         self.gdockdict = dict() # a dic for all top-level graph dock widgets: xas, xrd,...
         self.methodict = dict() # a dic for all available methods: xas, xrd,... there should be only one type each!
-        self.data_read_dict = {'20220720_inform': {'xas': XAS_INFORM_1, 'xrd': XRD_INFORM_1},
-                               '20221015_inform': {'xas':XAS_INFORM_2, 'xrd': XRD_INFORM_2},
-                               '20220720_inform_xrd': {'xas': XAS_INFORM_1, 'xrd': XRD_INFORM_1_ONLY},
+        self.data_read_dict = {'20220660_inform': {'xas':XAS_INFORM_2, 'xrd': XRD_INFORM_2},
+                               '20220660_inform_xrd_only': {'xas': XAS_INFORM_2, 'xrd': XRD_INFORM_2_ONLY},
+                               '20220720_inform': {'xas': XAS_INFORM_1, 'xrd': XRD_INFORM_1},
+                               '20220720_inform_xrd_only': {'xas': XAS_INFORM_1, 'xrd': XRD_INFORM_1_ONLY},
                                '20210738_battery': {'xas': XAS_BATTERY_1, 'xrd': XRD_BATTERY_1}}
 
         data_read = QMenu('Data Read Mode', self)
@@ -135,7 +137,7 @@ class ShowData(QMainWindow):
             read_mode_group.addAction(action)
 
         read_mode_group.setExclusive(True)
-        read_mode_group.triggered.connect(self.choose_data_read_mode)
+        # read_mode_group.triggered.connect(self.choose_data_read_mode)
 
         bar = self.menuBar()
         bar.addMenu(data_read)
@@ -153,25 +155,32 @@ class ShowData(QMainWindow):
         self.checkmethods = {} # checkboxes of top level
         self.cboxwidget = {}
         self.subcboxverti = {}
-        # [xas,xrd]
-        name_list = [['perovskite_test_05s_002', # 'Coat1_FAPI_05MCl_2',
+        self.path_name_dict = {}
+        self.fill_path_name_dict()
+        self.path_name_widget = {}
+        self.methodclassdict = {}  # a dic for preparing corresponding Class
+
+        read_mode_group.triggered.connect(self.choose_data_read_mode)
+
+    def fill_path_name_dict(self):
+        name_list = [['Coat1_FAPI_05MCl_2',
                       'Coat1_FAPI_05MCl_12'],
-                     # ['Coat1_FAPI_05MCl_Tramp_1',
-                     #  'Coat1_FAPI_05MCl_Tramp_14'],
-                     # ['Coat4_2S_FAPI_MACl05M_2',
-                     #  'Coat4_2S_FAPI_MACl05M_26'],
-                     # ['Coat4b_2S_FAPI_MACl05M_XAS_XRD_100C_1',
-                     #  'Coat4b_2S_FAPI_MACl05M_XAS_XRD_100C_38'],
-                     # ['Coat4c_2S_FAPI_MACl05M_XAS_XRD_RT_1',
-                     #  'Coat4c_2S_FAPI_MACl05M_XAS_XRD_RT_39'],
-                     # ['Coat5_12S_FAPI_MACl01M_XAS_XRD_3',
-                     #  'Coat5_12S_FAPI_MACl01M_XAS_XRD_33'],
-                     # ['Coat5_12S_FAPI_MACl01M_XAS_XRD_100C_2',
-                     #  'Coat5_12S_FAPI_MACl01M_XAS_XRD_100C_37'],
-                     # ['Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_1',
-                     #  'Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_40'],
-                     # ['Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_2',
-                     #  'Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_41'],
+                     ['Coat1_FAPI_05MCl_Tramp_1',
+                      'Coat1_FAPI_05MCl_Tramp_14'],
+                     ['Coat4_2S_FAPI_MACl05M_2',
+                      'Coat4_2S_FAPI_MACl05M_26'],
+                     ['Coat4b_2S_FAPI_MACl05M_XAS_XRD_100C_1',
+                      'Coat4b_2S_FAPI_MACl05M_XAS_XRD_100C_38'],
+                     ['Coat4c_2S_FAPI_MACl05M_XAS_XRD_RT_1',
+                      'Coat4c_2S_FAPI_MACl05M_XAS_XRD_RT_39'],
+                     ['Coat5_12S_FAPI_MACl01M_XAS_XRD_3',
+                      'Coat5_12S_FAPI_MACl01M_XAS_XRD_33'],
+                     ['Coat5_12S_FAPI_MACl01M_XAS_XRD_100C_2',
+                      'Coat5_12S_FAPI_MACl01M_XAS_XRD_100C_37'],
+                     ['Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_1',
+                      'Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_40'],
+                     ['Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_2',
+                      'Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_41'],
                      ['Coat6_12S_FAPI_Br02M_Cl01M_RT_6',
                       'Coat6_12S_FAPI_Br02M_Cl01M_RT_48'],
                      ['Coat6b_12S_FAPI_Br02M_Cl01M_heat_1',
@@ -180,30 +189,42 @@ class ShowData(QMainWindow):
                       'Coat7_12S_FAPI_Br06M_Cl01M_RT_51'],
                      ['Coat7_12S_FAPI_Br06M_Cl01M_heat_1',
                       'Coat7_12S_FAPI_Br06M_Cl01M_heat_52']]
-        self.path_name_dict = {}
+        name_list = [['MACl1M_DMF_airblade_QXRD_coat006a',
+                      'MACl1M_DMF_airblade_QXRD_coat006a_eiger'],
+                     ['MAFAPbI_DMF_coat022g',
+                      'MAFAPbI_DMF_coat022g_eiger']]
+
+        self.repeat = len(name_list)  # number of xas or xrd
+
         for k in range(len(name_list)):
-        # for k in len(name_list) - np.arange(2):
-            self.path_name_dict['xrd_' + str(k + 1)] = {'directory': r"Y:\20220660\2022101308",# r"Y:\20220720\2022042008",
-                                                        'raw file': name_list[k][1] + '_data_000001',
+            self.path_name_dict['xas_' + str(k + 1)] = {# 'directory': r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform',
+                                                        'directory': r"W:balder\20220660\2022101308",# r"Y:\20220720\2022042008",
+                                                        'raw file': name_list[k][0],
+                                                        'energy range (eV)': '12935-13935'# '12935-13435'
+                                                        }
+            # self.path_name_dict['xas_' + str(k + 1) + '_2'] = {'directory': r"Y:balder\20220660\2022101308",
+            #                                                    # r"Y:\20220720\2022042008",
+            #                                                    'raw file': name_list[k][0],
+            #                                                    'energy range (eV)': '13435-13935'  # '12935-13435'
+            #                                                    }
+            self.path_name_dict['xrd_' + str(k + 1)] = {# 'directory': r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform',
+                                                        'directory': r"W:balder\20220660\2022101308",# r"Y:\20220720\2022042008",
+                                                        'raw file': name_list[k][1], # '_data_000001',
                                                         'integration file appendix': '_resultFile.h5',
-                                                        'PONI file': 'LaB6_12935eV.poni',
+                                                        'PONI file': 'LaB6_12936p37eV_realCalib_sum.poni',# 'LaB6_12935eV.poni',
                                                         'refine dir': r'C:\Users\jialiu\OneDrive - Lund University'
                                                                        r'\Dokument\Data_20220720_Inform',
                                                         'refine subdir': 'Refine_Coat7_RT',
                                                         'data files': 'data_result*20phases',
-                                                        'refinement file': 'refine_coat7_rt_all.gpx'}
-            self.path_name_dict['xas_' + str(k + 1)] = {'directory': r"Y:\20220660\2022101308",# r"Y:\20220720\2022042008",
-                                       'raw file': name_list[k][0],
-                                       'energy range (eV)': '12935-13935'# '12935-13435'
-                                       }
+                                                        'refinement file': 'refine_coat7_rt_all.gpx'
+                                                        }
+            # self.path_name_dict['xrd_' + str(k + 1) + '_2'] = {'directory': r"Y:balder\20220660\2022101308",
+            #                                             'raw file': name_list[k][1],  # '_data_000001',
+            #                                             'integration file appendix': '_resultFile.h5',
+            #                                             'PONI file': 'LaB6_13591p12eV_realCalib_sum.poni',
+            #                                             }
 
-        # self.path_name_dict['xas_' + str(len(name_list) + 2)] = {'directory': r"Y:\20220720\2022042008",
-        #                                                          'raw file': name_list[-2][0],
-        #                                                          'energy range (eV)': '13435-14075'}
-        #
-        # self.path_name_dict['xas_' + str(len(name_list) + 3)] = {'directory': r"Y:\20220720\2022042008",
-        #                                                          'raw file': name_list[-1][0],
-        #                                                          'energy range (eV)': '13435-14075'}
+            # the above adding '_1' and '_2'does not work as you also have to change the self.methodclassdict below, which is not nice
 
         name_list_refl = ['Coat1_FAPbI_Cl05M_Refl',
                           'Coat04_Refl',
@@ -214,40 +235,25 @@ class ShowData(QMainWindow):
                           'Coat_06_Br02_Refl',
                           'Coat_07_Br06_Refl',
                           'Coat_07B_Refl',
-                          'Coat_07B_after_Refl']
+                          'Coat_07B_after_Refl'
                           # 'Ref_test_Refl',
                           # 'Ref_airblade_Refl',
                           # 'Ref_heating_after_airblade_Refl',
                           # 'Ref_heat_Refl',
                           # 'Ref_heat_150_Refl',
-                          # 'Ref_heat_150_again_Refl']
+                          # 'Ref_heat_150_again_Refl'
+                          ]
+        name_list_refl = ['MAFAPbI_DME_coat22']
 
-        # self.path_name_dict['pl'] = {'directory':r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
-        #                              'raw file': 'fAPbI3_MACl_0M_coat20'}
         for index in range(len(name_list_refl)):
             self.path_name_dict['refl_' + str(index + 1)] = {'directory':r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
                                                              'raw file': name_list_refl[index],
-                                                             'align data number':'3022',
-                                                             'to time':'2022-04-23T12:02:44'}
+                                                             # 'align data number':'3022',
+                                                             # 'to time':'2022-04-23T12:02:44'
+                                                             }
 
-        self.path_name_widget = {}
-
-        self.methodclassdict = {}  # a dic for preparing corresponding Class
-
-        self.repeat = len(name_list)  # number of xas or xrd
-
-        for index in range(self.repeat):  # default to inform mode
-            self.methodclassdict['xrd_' + str(index + 1)] = self.data_read_dict['20220720_inform']['xrd']
-            self.methodclassdict['xas_' + str(index + 1)] = self.data_read_dict['20220720_inform']['xas']
-
-        # self.methodclassdict['pl'] = PL
-        for index in range(len(name_list_refl)):
-            self.methodclassdict['refl_' + str(index + 1)] = Refl
-
-        # C:\Users\jialiu\OneDrive - Lund University\Dokument\TestEXAFS\\
-
-    # def mouseMoveEvent(self, event):
-    #     print(event.pos())
+        # self.path_name_dict['pl'] = {'directory':r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
+        #                              'raw file': 'fAPbI3_MACl_0M_coat20'}
 
     def choose_data_read_mode(self, action):
         for index in range(self.repeat):
@@ -369,36 +375,37 @@ class ShowData(QMainWindow):
         for key in self.methodict:
             timerange.append(self.methodict[key].time_range(self))
 
-        self.timerangearray = np.array(timerange) * 1000 # in milliseconds ! search for [:-3]
+        if timerange:
+            self.timerangearray = np.array(timerange) * 1000 # in milliseconds ! search for [:-3]
 
-        if not self.slideradded:
-            self.slider = QSlider(Qt.Horizontal)
-            self.slider.setObjectName('theSlider')
-            self.slider.setRange(0, np.max(self.timerangearray[:,1]) - np.min(self.timerangearray[:,0]))
-            self.slider.setPageStep(500)
-            self.slider.setSingleStep(50)
-            # self.slider.setRange(min(timerange, key=lambda x:x[0]), max(timerange, key=lambda x:x[1]))
-            # self.slider.setTickPosition(QSlider.TicksAbove)
-            # self.slider.setTickInterval(5)
-            # self.slider.setSingleStep(1)
-            self.slider.valueChanged.connect(self.update_timepoints)
+            if not self.slideradded:
+                self.slider = QSlider(Qt.Horizontal)
+                self.slider.setObjectName('theSlider')
+                self.slider.setRange(0, np.max(self.timerangearray[:,1]) - np.min(self.timerangearray[:,0]))
+                self.slider.setPageStep(500)
+                self.slider.setSingleStep(50)
+                # self.slider.setRange(min(timerange, key=lambda x:x[0]), max(timerange, key=lambda x:x[1]))
+                # self.slider.setTickPosition(QSlider.TicksAbove)
+                # self.slider.setTickInterval(5)
+                # self.slider.setSingleStep(1)
+                self.slider.valueChanged.connect(self.update_timepoints)
 
-            self.horilayout.addWidget(self.slider)
-            self.sliderlabel = QLabel()
-            self.horilayout.addWidget(self.sliderlabel)
-            self.mem = QPushButton("Memorize")
-            self.mem.setShortcut('Ctrl+M')
-            self.mem.clicked.connect(self.memorize_curve)
-            self.horilayout.addWidget(self.mem)
-            self.clr = QPushButton("Clear")
-            self.clr.setShortcut('Ctrl+C')
-            self.clr.clicked.connect(self.clear_curve)
-            self.horilayout.addWidget(self.clr)
-            self.slideradded = True
-        else:
-            self.slider.setRange(0, np.max(self.timerangearray[:, 1]) - np.min(self.timerangearray[:, 0]))
+                self.horilayout.addWidget(self.slider)
+                self.sliderlabel = QLabel()
+                self.horilayout.addWidget(self.sliderlabel)
+                self.mem = QPushButton("Memorize")
+                self.mem.setShortcut('Ctrl+M')
+                self.mem.clicked.connect(self.memorize_curve)
+                self.horilayout.addWidget(self.mem)
+                self.clr = QPushButton("Clear")
+                self.clr.setShortcut('Ctrl+C')
+                self.clr.clicked.connect(self.clear_curve)
+                self.horilayout.addWidget(self.clr)
+                self.slideradded = True
+            else:
+                self.slider.setRange(0, np.max(self.timerangearray[:, 1]) - np.min(self.timerangearray[:, 0]))
 
-        self.slider.setValue(self.slider.minimum() + 1)
+            self.slider.setValue(self.slider.minimum() + 1)
 
     def delslider(self):
         if self.slideradded:

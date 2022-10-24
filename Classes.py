@@ -33,12 +33,17 @@ import struct
 
 from scipy.signal import savgol_filter, savgol_coeffs
 from scipy.signal import find_peaks, peak_widths
+import shutil
+from paramiko import SSHClient
 
-sys.path.insert(0,r"C:\Users\balder-user\gsas2full\GSASII")
+# sys.path.insert(0,r"C:\Users\jialiu\gsas2full\GSASII")
+sys.path.insert(0,os.path.join(os.path.expanduser('~'), 'gsas2full', 'GSASII'))
 import GSASIIindex
 import GSASIIlattice
 import GSASIIscriptable as G2sc
 np.seterr(divide = 'ignore')
+
+ev2nm = 1239.8419843320025
 
 # warning
 # pypowder is not available - profile calcs. not allowed
@@ -310,7 +315,7 @@ class Methods_Base():
         self.actions = {}
         self.linedit = {}
         self.paralabel = {} # control para labels widget
-        self.pre_ts_btn_text = 'Update by parameters'
+        self.pre_ts_btn_text = 'Update by parameters(Ctrl+D)'
         # self.slideradded = False
 
         self.maxhue = 100  # 100 colorhues
@@ -391,8 +396,10 @@ class Methods_Base():
         self.prep_progress = QProgressBar(minimum=0, maximum=99)
         self.prep_progress.setValue(0)
         self.pre_ts_btn = QPushButton(self.pre_ts_btn_text)
+        self.pre_ts_btn.setShortcut('Ctrl+D')
         self.pre_ts_btn.clicked.connect(lambda: self.plot_from_prep(winobj))
-        self.load_ts_btn = QPushButton('Load time series')
+        self.load_ts_btn = QPushButton('Load time series(Ctrl+1)')
+        self.load_ts_btn.setShortcut('Ctrl+1')
         self.load_ts_btn.clicked.connect(lambda: self.plot_from_load(winobj))
         winobj.subcboxverti[method].addWidget(self.pre_ts_btn)
         winobj.subcboxverti[method].addWidget(self.prep_progress)
@@ -625,20 +632,24 @@ class XAS(Methods_Base):
     def exafs_process_single(self, index, mu, mu_error):
         Energy = self.entrydata[index, 0, ::]
         self.grouplist[index].mu_error = mu_error
-        e0 = find_e0(Energy, mu, group=self.grouplist[index])
-        pre_edge_point_1 = (e0 - Energy[0]) * (1 - self.parameters['normalizing']['pre-edge para 1'].setvalue)
-        post_edge_point_2 = (Energy[-1] - e0) * (1 - self.parameters['normalizing']['post-edge para 2'].setvalue)
-        pre_edge(Energy, mu, group=self.grouplist[index],
-                 pre1= - pre_edge_point_1,
-                 pre2= - pre_edge_point_1 * self.parameters['normalizing']['pre-edge para 2'].setvalue,
-                 norm2=post_edge_point_2,
-                 norm1=post_edge_point_2 * self.parameters['normalizing']['post-edge para 1'].setvalue)
-        autobk(Energy, mu, rbkg=self.parameters['normalized']['rbkg'].setvalue, group=self.grouplist[index])
-        xftf(self.grouplist[index].k, self.grouplist[index].chi,
-             kmin=self.parameters['chi(k)']['kmin'].setvalue, kmax=self.parameters['chi(k)']['kmax'].setvalue,
-             dk=self.parameters['chi(k)']['dk'].setvalue, window=self.parameters['chi(k)']['window'].choice,
-             kweight=self.parameters['chi(k)']['kweight'].setvalue,
-             group=self.grouplist[index])
+        try:
+            e0 = find_e0(Energy, mu, group=self.grouplist[index])
+        except:
+            print('bad data')
+        else:
+            pre_edge_point_1 = (e0 - Energy[0]) * (1 - self.parameters['normalizing']['pre-edge para 1'].setvalue)
+            post_edge_point_2 = (Energy[-1] - e0) * (1 - self.parameters['normalizing']['post-edge para 2'].setvalue)
+            pre_edge(Energy, mu, group=self.grouplist[index],
+                     pre1= - pre_edge_point_1,
+                     pre2= - pre_edge_point_1 * self.parameters['normalizing']['pre-edge para 2'].setvalue,
+                     norm2=post_edge_point_2,
+                     norm1=post_edge_point_2 * self.parameters['normalizing']['post-edge para 1'].setvalue)
+            autobk(Energy, mu, rbkg=self.parameters['normalized']['rbkg'].setvalue, group=self.grouplist[index])
+            xftf(self.grouplist[index].k, self.grouplist[index].chi,
+                 kmin=self.parameters['chi(k)']['kmin'].setvalue, kmax=self.parameters['chi(k)']['kmax'].setvalue,
+                 dk=self.parameters['chi(k)']['dk'].setvalue, window=self.parameters['chi(k)']['window'].choice,
+                 kweight=self.parameters['chi(k)']['kweight'].setvalue,
+                 group=self.grouplist[index])
 
     def plot_from_load(self, winobj): # for time series
         winobj.setslider()
@@ -801,13 +812,32 @@ class XAS(Methods_Base):
         try: data_end = np.where(self.energy_range[1] - data_single[:, 0] >= 0)[0][-1]
         except: data_end = -1
         data_range = np.s_[data_start:data_end]
-        tempdata = [data_single[data_range, 0], data_single[data_range, 1], data_single[data_range, 2]]
+        tempdata = np.array([data_single[data_range, 0], data_single[data_range, 1], data_single[data_range, 2]])
         self.entrydata.append(tempdata)
         with open(os.path.join(self.exportdir, self.fileshort + '_{}_spectrum'.format(index + 1)), 'w') as f:
-            np.savetxt(f, np.array(tempdata).transpose(), header='Energy, I0, I1')
+            np.savetxt(f, tempdata.T, header='Energy, I0, I1')
+
+    def sel_by_energy_range(self, data_single):
+        try:
+            data_start = np.where(data_single - self.energy_range[0] >= 0)[0][0]
+        except:
+            data_start = 0
+        try:
+            data_end = np.where(self.energy_range[1] - data_single >= 0)[0][-1]
+        except:
+            data_end = -1
+        data_range = np.s_[data_start:data_end]
+        return data_range
 
     def load_group(self,winobj):
-        self.entrydata = np.array(self.entrydata)
+        # min_len = 1e5
+        # for index in range(len(self.entrydata)): # find the min array length
+        #     if self.entrydata[index].shape[1] < min_len: min_len = self.entrydata[index].shape[1]
+        #
+        # for index in range(len(self.entrydata)): # make data same length
+        #     self.entrydata[index] = self.entrydata[index][:,0:min_len]
+
+        self.entrydata = np.array(self.entrydata) # now make a good array!
         tempfile_smoothed = os.path.join(self.exportdir, self.fileshort + '_Group_List_Smoothed')
         tempfile = os.path.join(self.exportdir, self.fileshort + '_Group_List')
         if os.path.isfile(tempfile_smoothed):
@@ -1027,31 +1057,46 @@ class XAS_INFORM_2(XAS):
                 self.file = h5py.File(self.filename, 'r')
                 self.filekeys = list(self.file.keys())
                 timesecond_all = []
-                if 'time' in range(len(self.filekeys)):
-                    for timetext in self.file['time']:
+                if 'time' in self.filekeys:
+                    for timetext in range(len(self.file['time'])):
                         timesecond = time.mktime(
-                            datatime.strptime(self.filekeys[t][()].decode(), '%Y-%m-%dT%H:%M:%S.%f').timetuple())
+                            datetime.strptime(self.file['time'][timetext].decode(), '%Y-%m-%d %H:%M:%S.%f').timetuple())
                         timesecond_all.append(timesecond)
-                    
+
+                    if len(timesecond_all) == 1: print('you do not need to process this xas data, go to xrd data directly!')
                     # make for half time spectrum, as this is back and forth measurement
                     timesecond_all.append(2 * timesecond_all[-1] - timesecond_all[-2])
                     timesecond_array = np.array(timesecond_all)
-                    timesecond_start = np.sort(timesecond_array[0:-2], (timesecond_array[0:-2] + timesecond_array[1:-1]) / 2)
-                    timesecond_end = np.sort(timesecond_array[1:-1], (timesecond_array[0:-2] + timesecond_array[1:-1]) / 2)
-                    self.entrytimesec = np.array([timesecond_start,timesecond_end])
+                    timesecond_start = np.sort(np.concatenate((timesecond_array[0:-2], (timesecond_array[0:-2] + timesecond_array[1:-1]) / 2)))
+                    timesecond_end = np.sort(np.concatenate((timesecond_array[1:-1], (timesecond_array[0:-2] + timesecond_array[1:-1]) / 2)))
+                    self.entrytimesec = np.array([timesecond_start,timesecond_end]).T # so critical!!!
 
         # read in data
         if self.entrydata == []:  # Energy, I0, I1
-            if os.path.isdir(self.exportdir):  # can also do deep comparison from here
-                for tempname in sorted(glob.glob(self.exportdir + '*_spectrum'),
-                                       key=os.path.getmtime):  # in ascending order
-                    with open(tempname, 'r') as f:
-                        self.entrydata.append(np.loadtxt(f).transpose())
+            datafile = os.path.join(self.exportdir, self.fileshort + '_spectrum_all.h5')
+            if os.path.isdir(self.exportdir) and os.path.isfile(datafile):
+                f = h5py.File(datafile, 'r')
+                for spectrum in f.keys():
+                    data = np.zeros((f[spectrum].shape[0], f[spectrum].shape[1]), dtype = 'float32')
+                    f[spectrum].read_direct(data)
+                    self.entrydata.append(data.T)
+
+                f.close()
+                # for tempname in sorted(glob.glob(self.exportdir + '*_spectrum'),
+                #                        key=os.path.getmtime):  # in ascending order
+                #     with open(tempname, 'r') as f:
+                #         self.entrydata.append(np.loadtxt(f).transpose())
 
             else:
-                os.mkdir(self.exportdir)
-                with open(tempfile, 'w') as f:
-                    np.savetxt(f, self.entrytimesec)
+                if not os.path.isdir(self.exportdir):
+                    os.mkdir(self.exportdir)
+
+                if not os.path.isfile(tempfile):
+                    with open(tempfile, 'w') as f:
+                        np.savetxt(f, self.entrytimesec)
+
+                if not hasattr(self, 'file'):
+                    self.file = h5py.File(self.filename, 'r')
 
                 self.filekeys = list(self.file.keys()) # I0a, I0b, I1, It, energy
                 data_all = {}
@@ -1062,16 +1107,67 @@ class XAS_INFORM_2(XAS):
                         data.read_direct(data_single)                        
                         data_all[key] = np.array(data_single)
                 
-                print(data_all['I0a'][0,:])
+                f = h5py.File(datafile, 'w')
+                data4xrd = []
                 for index in range(data.shape[0]): # output format has to be Energy, I0, I1
-                    half_index = int(data.shape[1] / 2 - 1)
-                    self.output_txt(np.array([data_all['energy'][index,0:half_index], # E0
-                                              data_all['I0a'][index,0:half_index] + data_all['I0b'][index,0:half_index], # I0
-                                              data_all['I1'][index,0:half_index]]), index) # I1
-                    
-                    self.output_txt(np.array([data_all['energy'][index,1 + half_index:], # E0
-                                              data_all['I0a'][index,1 + half_index:] + data_all['I0b'][index,1 + half_index:], # I0
-                                              data_all['I1'][index,1 + half_index:]]), index) # I1
+                    if data.shape[1] % 2 == 0:
+                        half_index = int(data.shape[1] / 2 - 1)
+                        # print(half_index)
+                        # self.output_txt(np.array([data_all['energy'][index,0:half_index + 1], # E0
+                        #                           data_all['I0a'][index,0:half_index + 1] + data_all['I0b'][index,0:half_index + 1], # I0
+                        #                           data_all['I1'][index,0:half_index + 1]]).T, 2 * index) # I1
+                        back_sel = np.s_[data.shape[1] - 1:half_index:-1]
+                        # self.output_txt(np.array([data_all['energy'][index, back_sel], # E0
+                        #                           data_all['I0a'][index,back_sel] + data_all['I0b'][index,back_sel], # I0
+                        #                           data_all['I1'][index,back_sel]]).T, 2 * index + 1) # I1
+
+                    else: # most of data is odd number of energy points
+                        half_index = int((data.shape[1] + 1) / 2 - 1) # middle point
+                        # self.output_txt(np.array([data_all['energy'][index, 1:half_index + 1],  # E0
+                        #                           data_all['I0a'][index, 1:half_index + 1] + data_all['I0b'][index, 1:half_index + 1],  # I0
+                        #                           data_all['I1'][index, 1:half_index + 1]]).T, 2 * index)  # I1
+                        back_sel = np.s_[data.shape[1] - 1:half_index - 1:-1] # include the middle point
+                        # self.output_txt(np.array([data_all['energy'][index, back_sel],  # E0
+                        #                           data_all['I0a'][index, back_sel] + data_all['I0b'][index, back_sel], # I0
+                        #                           data_all['I1'][index, back_sel]]).T, 2 * index + 1)  # I1
+
+                    data_range = self.sel_by_energy_range(data_all['energy'][index, 0:half_index + 1])
+
+                    f.create_dataset('spectrum_{:04d}'.format(index * 2),
+                                     data=np.array([data_all['energy'][index, data_range],  # E0
+                                               data_all['I0a'][index, data_range] +
+                                               data_all['I0b'][index, data_range],  # I0
+                                               data_all['I1'][index, data_range]]).T  # I1
+                                     )
+
+                    data_range = self.sel_by_energy_range(data_all['energy'][index, back_sel])
+
+                    f.create_dataset('spectrum_{:04d}'.format(index * 2 + 1),
+                                     data=np.array([data_all['energy'][index, data_range],  # E0
+                                               data_all['I0a'][index, data_range] +
+                                               data_all['I0b'][index, data_range],  # I0
+                                               data_all['I1'][index, data_range]]).T  # I1
+                                     )
+
+                    # extract data for xrd normalization
+                    # the first xrd
+                    data4xrd.append(np.array([data_all['energy'][index, 0],  # E0
+                                               data_all['I0a'][index, 0] +
+                                               data_all['I0b'][index, 0],  # I0
+                                               data_all['I1'][index, 0]]).T  # I1
+                                     )
+                    # the second xrd
+                    data4xrd.append(np.array([data_all['energy'][index, half_index],  # E0
+                                              data_all['I0a'][index, half_index] +
+                                              data_all['I0b'][index, half_index],  # I0
+                                              data_all['I1'][index, half_index]]).T  # I1
+                                    )
+
+                f.close()
+
+                # output data for xrd
+                with open(os.path.join(self.directory, 'process', self.fileshort + '_xas4xrd'), 'w') as f:
+                    np.savetxt(f, np.array(data4xrd))
 
             self.load_group(winobj)
 
@@ -1155,7 +1251,8 @@ class XRD(Methods_Base):
         self.availablemethods = ['raw', 'integrated', 'time series', 'refinement single',
                                  'centroid-T', 'integrated area-T', 'segregation degree-T']
         self.availablecurves['raw'] = ['show image']
-        self.availablecurves['integrated'] = ['original', 'normalized','truncated', 'smoothed', 'find peaks']
+        self.availablecurves['integrated'] = ['original', 'normalized to 1', # 'normalized to I0 and <font> &mu; </font>d',
+                                              'truncated', 'smoothed', 'find peaks']
         self.availablecurves['time series'] = ['pointer']
         self.availablecurves['refinement single'] = ['observed', 'calculated', 'difference']
         self.availablecurves['centroid-T'] = ['pointer']
@@ -1165,7 +1262,8 @@ class XRD(Methods_Base):
         self.fileshort = path_name_widget['raw file'].text()
         self.intfile_appendix = path_name_widget['integration file appendix'].text()
         self.ponifile = os.path.join(self.directory, 'process', path_name_widget['PONI file'].text())
-        with open(self.ponifile, 'r') as f: self.wavelength = 1e10 * float(f.readlines()[-1].splitlines()[0].partition(' ')[2])
+        with open(self.ponifile, 'r') as f: 
+            self.wavelength = 1e10 * float(f.readlines()[-1].splitlines()[0].partition(' ')[2]) # now in Angstrom 
         self.filename = os.path.join(self.directory, 'raw', self.fileshort + '.h5')
         self.refinedir = os.path.join(path_name_widget['refine dir'].text(), path_name_widget['refine subdir'].text())
         self.refinedata = glob.glob(os.path.join(self.refinedir, path_name_widget['data files'].text() + '.csv'))
@@ -1207,6 +1305,9 @@ class XRD(Methods_Base):
                              'Triclinic']
 
         self.parameters = {'integrated': {'scale': Paraclass(strings=('log10', ['log10', 'sqrt', 'linear'])),
+                                          'normalization': Paraclass(string=('not normalized',
+                                                                             ['normalized to I0 and <font> &mu; </font>d',
+                                                                              'not normalized'])),
                                           'x axis': Paraclass(strings=('q',['q','2th','d'])),
                                           'clip head': Paraclass(values=(0,0,1000,1)),
                                           'clip tail': Paraclass(values=(1, 1, 1000, 1)),
@@ -1247,9 +1348,10 @@ class XRD(Methods_Base):
                                         'exclude from':'0',
                                         'exclude to':'0'}}
 
-        self.pre_ts_btn_text = 'Do Batch Integration'
-        self.exportdir = os.path.join(self.directory, 'process', self.fileshort[0:-12])
-        self.exportfile = os.path.join(self.exportdir, self.fileshort + self.intfile_appendix)
+        self.pre_ts_btn_text = 'Do Batch Integration(Ctrl+D)'
+        energy = int(ev2nm / self.wavelength * 10)
+        self.exportdir = os.path.join(self.directory, 'process', self.fileshort + '_{}eV'.format(energy))
+        self.exportfile = os.path.join(self.exportdir, self.fileshort + '_{}eV'.format(energy) + self.intfile_appendix)
         self.entrytimesec = []
         self.cells_sort = {}
 
@@ -1257,19 +1359,23 @@ class XRD(Methods_Base):
 
     def read_intg(self): # it's raw, not normal here, can make a choice in the future
         intfile = h5py.File(self.exportfile, 'r')
-        intdata_all = intfile['rawresult']
+        if self.parameters['integrated']['normalization'].choice == 'not normalized':
+            intdata_all = intfile['rawresult']
+        else:
+            intdata_all = intfile['normresult']
+
         self.intdata_ts = np.zeros((intdata_all.shape[0], intdata_all.shape[1]), dtype='float32')
         intdata_all.read_direct(self.intdata_ts)
         self.intqaxis = np.array(list(intfile['info/q(Angstrom)']))
         intfile.close()
 
-    def output_intg(self, ai, result, norm_result, wavelength):
+    def output_intg(self, q, result, norm_result, wavelength):
         if not os.path.isdir(self.exportdir): os.mkdir(self.exportdir)
         resultfile = h5py.File(self.exportfile, 'w')
         tempgroup = resultfile.create_group('info')
-        # attention to this, ai.q in nm-1, divided by 10 to get A ^-1
-        tempgroup.create_dataset('q(Angstrom)', data=ai.q / 10)
-        data_2theta = np.arcsin(ai.q * wavelength / 10 / np.pi / 4) * 2 / np.pi * 180 # need to re-run!
+        # attention to this, q in nm-1, divided by 10 to get A ^-1
+        tempgroup.create_dataset('q(Angstrom)', data=q / 10)
+        data_2theta = np.arcsin(q * wavelength / 10 / np.pi / 4) * 2 / np.pi * 180
         tempgroup.create_dataset('2theta', data=data_2theta)
         tempgroup.create_dataset('abs_time_in_sec', data=self.entrytimesec)
         resultfile.create_dataset('rawresult', data=np.array(result))
@@ -1656,6 +1762,8 @@ class XRD(Methods_Base):
         winobj.setslider()
         # self.slideradded = True
         # winobj.slideradded = True
+        # if not hasattr(self,'read_intg'):
+        self.read_intg() # issue?
         if self.checksdict['time series'].isChecked():
             self.curvedict['time series']['pointer'].setChecked(True)
             if self.parameters['time series']['scale'].choice == 'log10':
@@ -1885,8 +1993,11 @@ class XRD(Methods_Base):
         if 'original' in self.curve_timelist[0]['integrated']:
             self.data_scale('integrated', 'original', self.intqaxis, self.intdata)
 
-        if 'normalized' in self.curve_timelist[0]['integrated']:
-            self.data_scale('integrated', 'normalized', self.intqaxis, self.intdata / max(self.intdata))
+        if 'normalized to 1' in self.curve_timelist[0]['integrated']:
+            self.data_scale('integrated', 'normalized to 1', self.intqaxis, self.intdata / max(self.intdata))
+
+        # if 'normalized to I0 and <font> &mu; </font>d' in self.curve_timelist[0]['integrated']:
+        #     pass
 
         if 'truncated' in self.curve_timelist[0]['integrated']:
             self.data_scale('integrated', 'truncated', [intqaxis_clipped[0],intqaxis_clipped[-1]],
@@ -1970,7 +2081,7 @@ class XRD_INFORM_1(XRD):
         # with open(self.ponifile, 'r') as f:
         #     wavelength = float(f.readlines()[-1].splitlines()[0].partition(' ')[2])
 
-        energy = 1239.8419843320025 / self.wavelength * 10  # wavelength in m, change to nm
+        energy = ev2nm / self.wavelength * 10  # wavelength in A, change to nm
 
         hasxas = False
         for key in winobj.methodict:  # for xas-xrd correlation
@@ -1995,8 +2106,8 @@ class XRD_INFORM_1(XRD):
                 # thickness and components.
                 self.prep_progress.setValue(int((index + 1) / I0.shape[0] * 100))
 
-            self.output_intg(ai, result, norm_result, self.wavelength)
-            self.read_intg()
+            self.output_intg(ai.q, result, norm_result, self.wavelength)
+            # self.read_intg()
             self.plot_from_load(winobj)
         else:
             print('you need to import a bundled XAS data')
@@ -2035,52 +2146,81 @@ class XRD_INFORM_2(XRD):
         # self.slideradded = True
         # winobj.slideradded = True
 
-        # add: if there is already the file, load it directly
-        ai = AzimuthalIntegrator(self.ponifile, (1065, 1030), 75e-6, 4, [3000, ], solid_angle=True)
+        # ai = AzimuthalIntegrator(self.ponifile, (1065, 1030), 75e-6, 4, [3000, ], solid_angle=True)
         result = []
         norm_result = []
         file = h5py.File(self.filename, 'r')
-        rawdata = file['entry/data/data']
+        rawdata = file['entry/instrument/eiger/data']
         mask = np.zeros((rawdata.shape[1], rawdata.shape[2]))
         rawimg = np.zeros((rawdata.shape[1], rawdata.shape[2]), dtype='uint32')
-        # this xrd data has to be bind with xas
-        # with open(self.ponifile, 'r') as f:
-        #     wavelength = float(f.readlines()[-1].splitlines()[0].partition(' ')[2])
 
-        energy = 1239.8419843320025 / self.wavelength * 10  # wavelength in m, change to nm
+        # energy = ev2nm / self.wavelength * 10  # wavelength in A, change to nm
 
-        hasxas = False
-        for key in winobj.methodict:  # for xas-xrd correlation
-            if key[0:3] == 'xas' and key[3:] == self.method_name[3:]:
-                self.sync_xas_name = key
-                hasxas = True
+        # hasxas = False
+        # for key in winobj.methodict:  # for xas-xrd correlation
+        #     if key[0:3] == 'xas' and key[3:] == self.method_name[3:]:
+        #         self.sync_xas_name = key
+        #         hasxas = True
 
-        if hasxas:
-            # position = np.where(winobj.methodict[self.sync_xas_name].entrydata[0, 0, ::] - energy > 0)[0][0]
-            # the data point is always the first one in this experiment setup
-            I0 = winobj.methodict[self.sync_xas_name].entrydata[::, 1, 0]
-            I1 = winobj.methodict[self.sync_xas_name].entrydata[::, 2, 0]
-            for index in range(I0.shape[0]):
+        # the following file stores the data needed for normalizationn of xrd according to I0 and mu d
+        data4xrd_file = os.path.join(self.directory, 'process', self.fileshort[0:-6] + '_xas4xrd')
+
+        if os.path.isfile(data4xrd_file):
+            # the xrd data point is always the first one and the middle one of a xas spectrum
+            # the ratio of log(I0/I1) is 1.5 for the middle one and 1.42 for the first one. to make it 0.6, add 2.02
+            # Justus method to normalize. the constant is based on if the observation background can be smoothed successfully
+            # or basically to make the absorption of the materials reach calculated value, in this case 0.6, assuming
+            # thickness and components.
+            # in essence, this method allow the intensity normalized by the flux, I0, and the amount of material, mu*d
+
+            with open(data4xrd_file, 'r') as f:
+                data4xrd = np.loadtxt(f)
+
+            I0 = data4xrd[:, 1]
+            I1 = data4xrd[:, 2]
+
+            with open(self.ponifile, 'r') as f:
+                wavelength = float(f.readlines()[-1].splitlines()[0].partition(' ')[2])
+
+            if wavelength < 13000: # low or high energy
+                index_sel = np.arange(0,I0.shape[0],2)
+                E0 = data4xrd[0,0]
+            else:
+                index_sel = np.arange(1, I0.shape[0], 2)
+                E0 = data4xrd[1,0]
+
+            self.wavelength = ev2nm / E0 * 10 # in Angstrom
+            if np.abs(self.wavelength - wavelength) > .00001:
+                ponifile_update = os.path.join(self.exportdir, '_poni_{}'.format(int(E0)))
+                with open(self.ponifile, 'r') as f:
+                    poni = f.readlines()
+
+                poni[-1] = 'Wavelength: {:16e}'.format(self.wavelength * 1e-10)
+
+                with open(ponifile_update, 'w') as f:
+                    f.writelines(poni)
+
+            else:
+                ponifile_update = self.ponifile
+
+            ai = AzimuthalIntegrator(ponifile_update, (1065, 1030), 75e-6, 4, [3000, ], solid_angle=True)
+            for index in index_sel:
                 rawdata.read_direct(rawimg, source_sel=np.s_[index, :, :])
                 mask[rawimg == 2 ** 32 - 1] = 1
-                intdata = ai.integrate(rawimg, mask=mask)[0]
+                intdata = ai.integrate(rawimg, mask=mask)[0] # time consuming
                 result.append(intdata)
-                norm_result.append(
-                    intdata / I0[index] / (np.log(I0[index] / I1[index]) + 2.6))
-                # Justus method to normalize. the 2.6 is based on if the observation background can be smoothed successfully
-                # or basically to make the absorption of the materials reach calculated value, in this case 0.6, assuming
-                # thickness and components.
-                self.prep_progress.setValue(int((index + 1) / I0.shape[0] * 100))
+                norm_result.append(intdata / I0[index] / (np.log(I0[index] / I1[index]) + 2.02))
+                self.prep_progress.setValue(int((index + 1) / index_sel.shape[0] * 100))
 
-            self.output_intg(ai, result, norm_result, self.wavelength)
-            self.read_intg()
+            self.output_intg(ai.q, result, norm_result, self.wavelength)
+            # self.read_intg()
             self.plot_from_load(winobj)
         else:
-            print('you need to import a bundled XAS data')
+            print('you need to process a bundled XAS data first')
 
         file.close()
 
-    def time_range(self, winobj): # for new data collection, linked to xas, through winobj--which is added only for this purpose
+    def time_range(self, winobj):
         for key in winobj.path_name_widget: # to distinguish xrd_1, xrd_2
             if self.fileshort == winobj.path_name_widget[key]['raw file'].text():
                 self.method_name = key
@@ -2091,17 +2231,195 @@ class XRD_INFORM_2(XRD):
                     self.entrytimesec = np.zeros((f['info/abs_time_in_sec'].shape[0], f['info/abs_time_in_sec'].shape[1]), dtype='float')
                     f['info/abs_time_in_sec'].read_direct(self.entrytimesec)
             else:
-                hasxas = False
-                for key in winobj.methodict: # for xrd-xas correlation
-                    if key[0:3] == 'xas' and key[3:] == self.method_name[3:]:
-                        self.sync_xas_name = key
-                        hasxas = True
+                # hasxas = False
+                # for key in winobj.methodict: # for xrd-xas correlation
+                #     if key[0:3] == 'xas' and key[3:] == self.method_name[3:]:
+                #         self.sync_xas_name = key
+                #         hasxas = True
+                #
+                # if hasxas: self.entrytimesec = winobj.methodict[self.sync_xas_name].entrytimesec
+                # else: print('you need to import a bundled XAS data')
 
-                if hasxas: self.entrytimesec = winobj.methodict[self.sync_xas_name].entrytimesec
-                else: print('you need to import a bundled XAS data')
+                xas_time = os.path.join(self.directory, 'process', self.fileshort[0:-6] + '_time_in_seconds')
+                # with open(self.ponifile, 'r') as f:
+                #     wavelength = float(f.readlines()[-1].splitlines()[0].partition(' ')[2])
+                #
+                # if wavelength < 13000:  # low or high energy
+                #     index_sel = np.arange(0, I0.shape[0], 2)
+                # else:
+                #     index_sel = np.arange(1, I0.shape[0], 2)
+                #
+                if os.path.isfile(xas_time):
+                    entrytimesec = np.loadtxt(xas_time)
+                    with open(self.ponifile, 'r') as f:
+                        wavelength = float(f.readlines()[-1].splitlines()[0].partition(' ')[2])
+
+                    if wavelength < 13000:  # low or high energy
+                        self.entrytimesec = entrytimesec[0::2,:]
+                    else:
+                        self.entrytimesec = entrytimesec[1::2,:]
+                else:
+                    print('you need to process a bundled XAS data first')
 
         return [self.entrytimesec[0, 0], self.entrytimesec[-1, 1]]
 
+class XRD_INFORM_2_ONLY(XRD):
+    def __init__(self, path_name_widget):
+        super(XRD_INFORM_2_ONLY, self).__init__(path_name_widget)
+        if self.intfile_appendix == '_resultFile.h5': # this mode use the cluster
+            self.intfile_appendix = '_resultCluster.h5'
+            self.exportfile.replace('File', 'Cluster')
+
+    def plot_from_prep(self, winobj):  # do integration; some part should be cut out to make a new function
+        # if winobj.slideradded == False:
+        winobj.setslider()
+        # self.slideradded = True
+        # winobj.slideradded = True
+
+        # ai = AzimuthalIntegrator(self.ponifile, (1065, 1030), 75e-6, 4, [3000, ], solid_angle=True)
+        # result = []
+        norm_result = []
+        # file = h5py.File(self.filename, 'r')
+        # rawdata = file['entry/instrument/eiger/data']
+        # mask = np.zeros((rawdata.shape[1], rawdata.shape[2]))
+        # rawimg = np.zeros((rawdata.shape[1], rawdata.shape[2]), dtype='uint32')
+
+        # energy = ev2nm / self.wavelength * 10  # wavelength in A, change to nm
+
+        # hasxas = False
+        # for key in winobj.methodict:  # for xas-xrd correlation
+        #     if key[0:3] == 'xas' and key[3:] == self.method_name[3:]:
+        #         self.sync_xas_name = key
+        #         hasxas = True
+
+        # the following file stores the data needed for normalizationn of xrd according to I0 and mu d
+        data4xrd_file = os.path.join(self.directory, 'raw', self.fileshort[0:-6] + '.h5')
+
+        if os.path.isfile(data4xrd_file):
+            # the xrd data point is always the first one and the middle one of a xas spectrum
+            # the ratio of log(I0/I1) is 1.5 for the middle one and 1.42 for the first one. to make it 0.6, add 2.02
+            # Justus method to normalize. the constant is based on if the observation background can be smoothed successfully
+            # or basically to make the absorption of the materials reach calculated value, in this case 0.6, assuming
+            # thickness and components.
+            # in essence, this method allow the intensity normalized by the flux, I0, and the amount of material, mu*d
+
+            with h5py.File(data4xrd_file, 'r') as f:
+                I1 = np.zeros(f['I1'].shape[-1], dtype = 'float32')
+                f['I1'].read_direct(I1)
+                I0a = np.zeros(f['I1'].shape[-1], dtype='float32')
+                f['I0a'].read_direct(I0a)
+                I0b = np.zeros(f['I1'].shape[-1], dtype='float32')
+                f['I0a'].read_direct(I0b)
+                I0 = I0a + I0b
+                energy = np.zeros(f['I1'].shape[-1], dtype='float32')
+                f['energy'].read_direct(energy)
+
+            with open(self.ponifile, 'r') as f:
+                wavelength = float(f.readlines()[-1].splitlines()[0].partition(' ')[2])
+
+            self.wavelength = ev2nm / energy[0] * 10 # in Angstrom
+
+            if not os.path.isdir(self.exportdir): os.mkdir(self.exportdir)
+
+            if np.abs(self.wavelength - wavelength) > .00001:
+                ponifile_update = os.path.join(self.exportdir, self.fileshort + '_{}eV.poni'.format(int(energy[0])))
+                with open(self.ponifile, 'r') as f:
+                    poni = f.readlines()
+
+                poni[-1] = 'Wavelength: {:16e}'.format(self.wavelength * 1e-10)
+
+                with open(ponifile_update, 'w') as f:
+                    f.writelines(poni)
+
+            else:
+                ponifile_update = self.ponifile
+
+            clusterfile = os.path.join(self.directory, 'process', self.fileshort[0:-6] + self.intfile_appendix)
+            if not os.path.isfile(clusterfile):
+                clusterfolder = '/data/visitors' + self.directory.replace(os.sep, '/').replace('//', '/')[2::]
+                client = SSHClient()
+                client.load_system_host_keys()
+                client.connect('clu0-fe-1.maxiv.lu.se', username='balder-user', password='BeamPass!')
+                cmd = "sbatch --export=ALL,argv=\'%s %s %s\' " \
+                      "/mxn/home/balder-user/BalderProcessingScripts/balder-xrd-processing/submit_stream_MR.sh" % (
+                          clusterfolder, self.fileshort[0:-6], ponifile_update)
+                # client.exec_command(cmd)
+                stdin, stdout, stderr = client.exec_command(cmd)
+                lines1 = stdout.readlines()
+                lines2 = stderr.readlines()
+                print(lines1)
+                print(lines2)
+                client.close()
+
+            # add status check
+            t0 = time.time()
+            t = 0
+            while t < 1000:
+                if os.path.exists(clusterfile):
+                    print('Integration completed by HPC cluster in ', t, ' seconds.')
+                    break
+                time.sleep(1)
+                t = time.time() - t0
+
+            with h5py.File(clusterfile, 'r') as f:
+                q = np.zeros(f['q'].shape[-1], dtype='float32')
+                f['q'].read_direct(q)
+                raw_result = np.zeros(f['results'].shape[0], f['results'].shape[1], dtype='float32')
+                f['results'].read_direct(raw_result)
+
+            for index in range(raw_result.shape[0]):
+                norm_result.append(raw_result[index,:] / I0[index] / (np.log(I0[index] / I1[index]) + 2.02))
+                self.prep_progress.setValue(int((index + 1) / raw_result.shape[0] * 100))
+
+            shutil.copy(clusterfile,self.exportfile)
+            resultfile = h5py.File(self.exportfile, 'w') # over write the old integration file
+            tempgroup = resultfile.create_group('info')
+            # attention to this, ai.q in nm-1, divided by 10 to get A ^-1
+            tempgroup.create_dataset('q(Angstrom)', data=ai.q)
+            data_2theta = np.arcsin(q * self.wavelength / np.pi / 4) * 2 / np.pi * 180
+            tempgroup.create_dataset('2theta', data=data_2theta)
+            tempgroup.create_dataset('abs_time_in_sec', data=self.entrytimesec)
+            resultfile.create_dataset('rawresult', data=np.array(raw_result))
+            resultfile.create_dataset('normresult', data=np.array(norm_result))
+            resultfile.close()
+            # txt
+            for k in range(len(norm_result)):
+                with open(os.path.join(self.exportdir, self.fileshort + '_data' + str(k) + '.xy'), 'w') as f:
+                    np.savetxt(f, np.array([data_2theta, norm_result[k]]).transpose())
+
+            self.plot_from_load(winobj)
+
+        else:
+            print('you need to double check your file name')
+
+        # file.close()
+
+    def time_range(self, winobj):
+        for key in winobj.path_name_widget: # to distinguish xrd_1, xrd_2
+            if self.fileshort == winobj.path_name_widget[key]['raw file'].text():
+                self.method_name = key
+
+        if self.entrytimesec == []:
+            if os.path.isfile(self.exportfile):
+                with h5py.File(self.exportfile, 'r') as f:
+                    self.entrytimesec = np.zeros((f['info/abs_time_in_sec'].shape[0], f['info/abs_time_in_sec'].shape[1]), dtype='float')
+                    f['info/abs_time_in_sec'].read_direct(self.entrytimesec)
+            else:
+                data4xrd_file = os.path.join(self.directory, 'raw', self.fileshort[0:-6] + '.h5')
+                if os.path.isfile(data4xrd_file):
+                    with h5py.File(data4xrd_file, 'r') as f:
+                        startime = time.mktime(
+                            datetime.strptime(f['time'][0].decode(), '%Y-%m-%d %H:%M:%S.%f').timetuple())
+                        durations = np.zeros(f['integration_time'].shape[-1],dtype='float32')
+                        f['integration_time'].read_direct(durations)
+
+                    self.entrytimesec = (startime + np.array([np.arange(0,len(durations)),
+                                                            np.arange(1,len(durations) + 1)]) * durations[0] * 1e-6).T # check the unit!!!
+
+                else:
+                    print('you need to double check your file name')
+
+        return [self.entrytimesec[0, 0], self.entrytimesec[-1, 1]]
 
 class XRD_INFORM_1_ONLY(XRD):
     def __init__(self, path_name_widget):
@@ -2121,7 +2439,7 @@ class XRD_INFORM_1_ONLY(XRD):
         # with open(self.ponifile, 'r') as f:
         #     wavelength = float(f.readlines()[-1].splitlines()[0].partition(' ')[2])
 
-        energy = 1239.8419843320025 / self.wavelength * 10  # wavelength in m, change to nm
+        energy = ev2nm / self.wavelength * 10  # wavelength in A, change to nm
 
         with h5py.File(self.filename[0:-17] + '1.h5', 'r') as f:  # this is so so so special a case!!!
             I0 = f['spectrum0'][:, 1]
@@ -2146,8 +2464,8 @@ class XRD_INFORM_1_ONLY(XRD):
 
             index_total -= 1000
 
-        self.output_intg(ai, result, norm_result, self.wavelength)
-        self.read_intg()
+        self.output_intg(ai.q, result, norm_result, self.wavelength)
+        # self.read_intg()
         self.plot_from_load(winobj)
 
     def time_range(self, winobj): #
@@ -2250,8 +2568,8 @@ class XRD_BATTERY_1(XRD):
         # with open(self.ponifile, 'r') as f:
         #     wavelength = float(f.readlines()[-1].splitlines()[0].partition(' ')[2])
 
-        self.output_intg(ai, result, norm_result, self.wavelength) # output integrated data
-        self.read_intg() # ini self.intdata_ts and self.intqaxis
+        self.output_intg(ai.q, result, norm_result, self.wavelength) # output integrated data
+        # self.read_intg() # ini self.intdata_ts and self.intqaxis
         self.plot_from_load(winobj)
 
     def time_range(self, winobj):  # need to rewrite for none-h5file
@@ -2281,18 +2599,6 @@ class XRD_BATTERY_1(XRD):
                 self.entrytimesec = np.array(self.entrytimesec)
 
         return [self.entrytimesec[0, 0], self.entrytimesec[-1, 1]]
-
-    def plot_from_prep_online(self, winobj): # this is not consistent with what we have now
-        self.clusterfolder = '/data/visitors' + self.fileshort.replace(os.sep,'/').replace('//','/')[2::]
-        client = SSHClient()
-        client.load_system_host_keys()
-        client.connect('clu0-fe-1.maxiv.lu.se', username='balder-user', password='BeamPass!')
-        cmd = "sbatch --export=ALL,argv=\'%s %s %s\' " \
-              "/mxn/home/balder-user/BalderProcessingScripts/balder-xrd-processing/submit_MR.sh" % (
-            self.clusterfolder, self.fileshort, self.ponifile)
-        client.exec_command(cmd)
-        client.close()
-        self.plot_from_load(winobj)
 
 class Optic(Methods_Base):
     def __init__(self, path_name_widget):
