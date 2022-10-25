@@ -163,7 +163,7 @@ class ShowData(QMainWindow):
         read_mode_group.triggered.connect(self.choose_data_read_mode)
 
     def fill_path_name_dict(self):
-        name_list = [['Coat1_FAPI_05MCl_2',
+        name_ls01 = [['Coat1_FAPI_05MCl_2',
                       'Coat1_FAPI_05MCl_12'],
                      ['Coat1_FAPI_05MCl_Tramp_1',
                       'Coat1_FAPI_05MCl_Tramp_14'],
@@ -180,51 +180,113 @@ class ShowData(QMainWindow):
                      ['Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_1',
                       'Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_40'],
                      ['Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_2',
-                      'Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_41'],
-                     ['Coat6_12S_FAPI_Br02M_Cl01M_RT_6',
+                      'Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_41']]
+
+        # two xas, one xrd
+        name_ls02 = [['Coat6_12S_FAPI_Br02M_Cl01M_RT_6',
+                      'Coat6_12S_FAPI_Br02M_Cl01M_RT_6',
                       'Coat6_12S_FAPI_Br02M_Cl01M_RT_48'],
                      ['Coat6b_12S_FAPI_Br02M_Cl01M_heat_1',
+                      'Coat6b_12S_FAPI_Br02M_Cl01M_heat_1',
                       'Coat6b_12S_FAPI_Br02M_Cl01M_heat_53'],
                      ['Coat7_12S_FAPI_Br06M_Cl01M_RT_1',
+                      'Coat7_12S_FAPI_Br06M_Cl01M_RT_1',
                       'Coat7_12S_FAPI_Br06M_Cl01M_RT_51'],
                      ['Coat7_12S_FAPI_Br06M_Cl01M_heat_1',
+                      'Coat7_12S_FAPI_Br06M_Cl01M_heat_1',
                       'Coat7_12S_FAPI_Br06M_Cl01M_heat_52']]
-        name_list = [['MACl1M_DMF_airblade_QXRD_coat006a',
-                      'MACl1M_DMF_airblade_QXRD_coat006a_eiger'],
-                     ['MAFAPbI_DMF_coat022g',
-                      'MAFAPbI_DMF_coat022g_eiger']]
+        # xrd only
+        name_ls01 = [['MACl1M_DMF_airblade_QXRD_coat006'],
+                     ['MACl1M_DMF_airblade_QXRD_coat006a'],
+                     ['MACl1M_DMF_airblade_QXRD_coat007'],
+                     ['MACl1M_DMF_airblade_QXRD_coat007a'],
+                     ['MACl1M_DMF_airblade_QXRD_coat007b'],
+                     ['MACl1M_DMF_airblade_QXRD_coat007c'],
+                     ['MACl1M_DMF_airblade_QXRD_coat07d'],
+                     ['MAPbBrI_DMSO_2ME_coat010'], # be careful with this one, no xas!
+                     ['MAPbBrI_DMSO_2ME_coat011'],
+                     ['MAPbBrI_DMSO_2ME_coat012']]
+
+        # one xas, two xrd
+        name_ls03 = [['MACl1M_DMF_slow_dry_coat004d'],
+                     ['MACl1M_DMF_slow_dry_coat004fb'],
+                     ['MACl1M_DMF_slow_dry_coat005'],
+                     ['MACl1M_DMF_slow_dry_coat006'],
+                     ['MAFAPbI_DMF_coat020'],
+                     ['MAFAPbI_DMF_coat021'],
+                     ['MAFAPbI_DMF_coat022g'],
+                     ['MAFAPbI_DMF_coat023']]
+
+        for index in range(len(name_ls03)):
+            name_ls03[index].append(name_ls03[index][0] + '_eiger')
+            name_ls03[index].append(name_ls03[index][0] + '_eiger')
+
+        # two xas, two xrd
+        name_ls04 = [['MAPbBrI_DMSO_2ME_coat08b'],
+                     ['MAPbBrI_DMSO_2ME_coat009b'],
+                     ['MAPbBrI_DMSO_2ME_coat013'],
+                     ['MAPbBrI_DMSO_2ME_coat014b'],
+                     ['MAPbBrI_DMSO_2ME_coat015b'],
+                     ['MAPbBrI_DMSO_2ME_coat016'],
+                     ['MAPbBrI_DMSO_2ME_coat017a'],
+                     ['MAPbBrI_DMSO_2ME_coat018'],
+                     ['MAPbBrI_DMSO_2ME_coat014b'],
+                     ['test_thickness']]
+
+        for index in range(len(name_ls04)):
+            name_ls04[index].append(name_ls04[index][0])
+            name_ls04[index].append(name_ls04[index][0] + '_eiger')
+            name_ls04[index].append(name_ls04[index][0] + '_eiger')
+
+        # name_list = name_ls01 # one xrd
+        # name_list = name_ls02 # two xas, one xrd
+        name_list = name_ls03 # one xas, two xrd
+        # name_list = name_ls04 # two xas, two xrd
 
         self.repeat = len(name_list)  # number of xas or xrd
 
+        # file_directory = r"Y:\20220720\2022042008"
+        file_directory = r"W:balder\20220660\2022101308"
+        # file_directory = r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform',
         for k in range(len(name_list)):
-            self.path_name_dict['xas_' + str(k + 1)] = {# 'directory': r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform',
-                                                        'directory': r"W:balder\20220660\2022101308",# r"Y:\20220720\2022042008",
-                                                        'raw file': name_list[k][0],
-                                                        'energy range (eV)': '12935-13935'# '12935-13435'
-                                                        }
-            # self.path_name_dict['xas_' + str(k + 1) + '_2'] = {'directory': r"Y:balder\20220660\2022101308",
-            #                                                    # r"Y:\20220720\2022042008",
-            #                                                    'raw file': name_list[k][0],
-            #                                                    'energy range (eV)': '13435-13935'  # '12935-13435'
-            #                                                    }
-            self.path_name_dict['xrd_' + str(k + 1)] = {# 'directory': r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform',
-                                                        'directory': r"W:balder\20220660\2022101308",# r"Y:\20220720\2022042008",
-                                                        'raw file': name_list[k][1], # '_data_000001',
-                                                        'integration file appendix': '_resultFile.h5',
-                                                        'PONI file': 'LaB6_12936p37eV_realCalib_sum.poni',# 'LaB6_12935eV.poni',
-                                                        'refine dir': r'C:\Users\jialiu\OneDrive - Lund University'
-                                                                       r'\Dokument\Data_20220720_Inform',
-                                                        'refine subdir': 'Refine_Coat7_RT',
-                                                        'data files': 'data_result*20phases',
-                                                        'refinement file': 'refine_coat7_rt_all.gpx'
-                                                        }
-            # self.path_name_dict['xrd_' + str(k + 1) + '_2'] = {'directory': r"Y:balder\20220660\2022101308",
-            #                                             'raw file': name_list[k][1],  # '_data_000001',
-            #                                             'integration file appendix': '_resultFile.h5',
-            #                                             'PONI file': 'LaB6_13591p12eV_realCalib_sum.poni',
-            #                                             }
+            if len(name_list[k]) > 1:
+                if name_list[k][0] == name_list[k][1]:
+                    self.path_name_dict['xas_' + str(k + 1) + '_1'] = {'directory': file_directory,
+                                                                       'raw file': name_list[k][0],
+                                                                       'energy range (eV)': '12395-13435'}
+                    self.path_name_dict['xas_' + str(k + 1) + '_2'] = {'directory': file_directory,
+                                                                       'raw file': name_list[k][1],
+                                                                       'energy range (eV)': '13435-13935'}
+                else:
+                    self.path_name_dict['xas_' + str(k + 1)] = {'directory': file_directory,
+                                                                'raw file': name_list[k][0],
+                                                                'energy range (eV)': '12935-13935'}
 
-            # the above adding '_1' and '_2'does not work as you also have to change the self.methodclassdict below, which is not nice
+                if name_list[k][-1] == name_list[k][-2]:
+                    self.path_name_dict['xrd_' + str(k + 1) + '_1'] = {'directory': file_directory,
+                                                                       'raw file': name_list[k][-2], # '_data_000001',
+                                                                       'integration file appendix': '_resultFile.h5',
+                                                                       'PONI file': 'LaB6_12936p37eV_realCalib_sum.poni'} # 'LaB6_12935eV.poni',
+                    self.path_name_dict['xrd_' + str(k + 1) + '_2'] = {'directory': file_directory,
+                                                                       'raw file': name_list[k][-1],
+                                                                       'integration file appendix': '_resultFile.h5',
+                                                                       'PONI file': 'LaB6_13591p12eV_realCalib_sum.poni'}
+                else:
+                    self.path_name_dict['xrd_' + str(k + 1)] = {'directory': file_directory,
+                                                                'raw file': name_list[k][-1],
+                                                                'integration file appendix': '_resultFile.h5',
+                                                                'PONI file': 'LaB6_12936p37eV_realCalib_sum.poni'}
+                                                                # 'refine dir': r'C:\Users\jialiu\OneDrive - Lund University'
+                                                                #                r'\Dokument\Data_20220720_Inform',
+                                                                # 'refine subdir': 'Refine_Coat7_RT',
+                                                                # 'data files': 'data_result*20phases',
+                                                                # 'refinement file': 'refine_coat7_rt_all.gpx'}
+            
+            else:
+                self.path_name_dict['xrd_' + str(k + 1)] = {'directory': file_directory,
+                                                            'raw file': name_list[k][-1],
+                                                            'integration file appendix': '_resultCluster.h5',
+                                                            'PONI file': 'LaB6_12936p37eV_realCalib_sum.poni'}
 
         name_list_refl = ['Coat1_FAPbI_Cl05M_Refl',
                           'Coat04_Refl',
@@ -235,19 +297,20 @@ class ShowData(QMainWindow):
                           'Coat_06_Br02_Refl',
                           'Coat_07_Br06_Refl',
                           'Coat_07B_Refl',
-                          'Coat_07B_after_Refl'
-                          # 'Ref_test_Refl',
-                          # 'Ref_airblade_Refl',
-                          # 'Ref_heating_after_airblade_Refl',
-                          # 'Ref_heat_Refl',
-                          # 'Ref_heat_150_Refl',
-                          # 'Ref_heat_150_again_Refl'
-                          ]
+                          'Coat_07B_after_Refl']
+        name_list_refl = [ 'Ref_test_Refl',
+                          'Ref_airblade_Refl',
+                          'Ref_heating_after_airblade_Refl',
+                          'Ref_heat_Refl',
+                          'Ref_heat_150_Refl',
+                          'Ref_heat_150_again_Refl']
         name_list_refl = ['MAFAPbI_DME_coat22']
 
+        refl_directory = file_directory
+        # refl_directory = r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData"
         for index in range(len(name_list_refl)):
-            self.path_name_dict['refl_' + str(index + 1)] = {'directory':r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
-                                                             'raw file': name_list_refl[index],
+            self.path_name_dict['refl_' + str(index + 1)] = {'directory': refl_directory,
+                                                             'raw file': name_list_refl[index]
                                                              # 'align data number':'3022',
                                                              # 'to time':'2022-04-23T12:02:44'
                                                              }
@@ -257,8 +320,10 @@ class ShowData(QMainWindow):
 
     def choose_data_read_mode(self, action):
         for index in range(self.repeat):
-            self.methodclassdict['xrd_' + str(index + 1)] = self.data_read_dict[action.text()]['xrd']
-            self.methodclassdict['xas_' + str(index + 1)] = self.data_read_dict[action.text()]['xas']
+            for key in self.path_name_dict:
+                if key[0:3] == 'xrd': self.methodclassdict[key] = self.data_read_dict[action.text()]['xrd']
+                if key[0:3] == 'xas': self.methodclassdict[key] = self.data_read_dict[action.text()]['xas']
+                if key[0:3] == 'ref': self.methodclassdict[key] = Refl
 
         if not self.initialized:
             self.ini_methods_cboxes()
