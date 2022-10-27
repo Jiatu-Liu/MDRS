@@ -205,17 +205,17 @@ class ShowData(QMainWindow):
                      ['MACl1M_DMF_airblade_QXRD_coat07d'],
                      ['MAPbBrI_DMSO_2ME_coat010'], # be careful with this one, no xas!
                      ['MAPbBrI_DMSO_2ME_coat011'],
-                     ['MAPbBrI_DMSO_2ME_coat012']]
+                     ['MAPbBrI_DMSO_2ME_coat012'],
+                     ['MAFAPbI_DMF_coat020']]
 
         # one xas, two xrd
-        name_ls03 = [['MACl1M_DMF_slow_dry_coat004d'],
+        name_ls03 = [['LaB6'],
+                     ['MACl1M_DMF_slow_dry_coat004d'],
                      ['MACl1M_DMF_slow_dry_coat004fb'],
                      ['MACl1M_DMF_slow_dry_coat005'],
-                     ['MACl1M_DMF_slow_dry_coat006'],
-                     ['MAFAPbI_DMF_coat020'],
                      ['MAFAPbI_DMF_coat021'],
                      ['MAFAPbI_DMF_coat022g'],
-                     ['MAFAPbI_DMF_coat023']]
+                     ['MACl3M_coat023a']]
 
         for index in range(len(name_ls03)):
             name_ls03[index].append(name_ls03[index][0] + '_eiger')
@@ -248,6 +248,9 @@ class ShowData(QMainWindow):
         # file_directory = r"Y:\20220720\2022042008"
         file_directory = r"W:balder\20220660\2022101308"
         # file_directory = r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform',
+        poni_file1 = 'LaB6_12936p37eV_realCalib_sum.poni'
+        poni_file2 = 'LaB6_13591p12eV_realCalib_sum.poni'
+        file_apdx = '_resultCluster.h5'
         for k in range(len(name_list)):
             if len(name_list[k]) > 1:
                 if name_list[k][0] == name_list[k][1]:
@@ -265,17 +268,17 @@ class ShowData(QMainWindow):
                 if name_list[k][-1] == name_list[k][-2]:
                     self.path_name_dict['xrd_' + str(k + 1) + '_1'] = {'directory': file_directory,
                                                                        'raw file': name_list[k][-2], # '_data_000001',
-                                                                       'integration file appendix': '_resultFile.h5',
-                                                                       'PONI file': 'LaB6_12936p37eV_realCalib_sum.poni'} # 'LaB6_12935eV.poni',
+                                                                       'integration file appendix': file_apdx,
+                                                                       'PONI file': poni_file1} # 'LaB6_12935eV.poni',
                     self.path_name_dict['xrd_' + str(k + 1) + '_2'] = {'directory': file_directory,
                                                                        'raw file': name_list[k][-1],
-                                                                       'integration file appendix': '_resultFile.h5',
-                                                                       'PONI file': 'LaB6_13591p12eV_realCalib_sum.poni'}
+                                                                       'integration file appendix': file_apdx,
+                                                                       'PONI file': poni_file2}
                 else:
                     self.path_name_dict['xrd_' + str(k + 1)] = {'directory': file_directory,
                                                                 'raw file': name_list[k][-1],
-                                                                'integration file appendix': '_resultFile.h5',
-                                                                'PONI file': 'LaB6_12936p37eV_realCalib_sum.poni'}
+                                                                'integration file appendix': file_apdx,
+                                                                'PONI file': poni_file1}
                                                                 # 'refine dir': r'C:\Users\jialiu\OneDrive - Lund University'
                                                                 #                r'\Dokument\Data_20220720_Inform',
                                                                 # 'refine subdir': 'Refine_Coat7_RT',
@@ -285,8 +288,8 @@ class ShowData(QMainWindow):
             else:
                 self.path_name_dict['xrd_' + str(k + 1)] = {'directory': file_directory,
                                                             'raw file': name_list[k][-1],
-                                                            'integration file appendix': '_resultCluster.h5',
-                                                            'PONI file': 'LaB6_12936p37eV_realCalib_sum.poni'}
+                                                            'integration file appendix': file_apdx,
+                                                            'PONI file': poni_file1}
 
         name_list_refl = ['Coat1_FAPbI_Cl05M_Refl',
                           'Coat04_Refl',
@@ -298,7 +301,7 @@ class ShowData(QMainWindow):
                           'Coat_07_Br06_Refl',
                           'Coat_07B_Refl',
                           'Coat_07B_after_Refl']
-        name_list_refl = [ 'Ref_test_Refl',
+        name_list_refl = ['Ref_test_Refl',
                           'Ref_airblade_Refl',
                           'Ref_heating_after_airblade_Refl',
                           'Ref_heat_Refl',
@@ -306,7 +309,7 @@ class ShowData(QMainWindow):
                           'Ref_heat_150_again_Refl']
         name_list_refl = ['MAFAPbI_DME_coat22']
 
-        refl_directory = file_directory
+        refl_directory = r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform' # file_directory
         # refl_directory = r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData"
         for index in range(len(name_list_refl)):
             self.path_name_dict['refl_' + str(index + 1)] = {'directory': refl_directory,
