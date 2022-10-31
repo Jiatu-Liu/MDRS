@@ -200,12 +200,11 @@ class ShowData(QMainWindow):
                      ['MACl1M_DMF_airblade_QXRD_coat006a'],
                      ['MACl1M_DMF_airblade_QXRD_coat007'],
                      ['MACl1M_DMF_airblade_QXRD_coat007a'],
-                     ['MACl1M_DMF_airblade_QXRD_coat007b'],
-                     ['MACl1M_DMF_airblade_QXRD_coat007c'],
-                     ['MACl1M_DMF_airblade_QXRD_coat07d'],
                      ['MAPbBrI_DMSO_2ME_coat010'], # be careful with this one, no xas!
                      ['MAPbBrI_DMSO_2ME_coat011'],
                      ['MAPbBrI_DMSO_2ME_coat012'],
+                     ['MAPbBrI_DMSO_2ME_coat016'],
+                     ['MAPbBrI_DMSO_2ME_coat018'],
                      ['MAFAPbI_DMF_coat020']]
 
         # one xas, two xrd
@@ -227,10 +226,7 @@ class ShowData(QMainWindow):
                      ['MAPbBrI_DMSO_2ME_coat013'],
                      ['MAPbBrI_DMSO_2ME_coat014b'],
                      ['MAPbBrI_DMSO_2ME_coat015b'],
-                     ['MAPbBrI_DMSO_2ME_coat016'],
                      ['MAPbBrI_DMSO_2ME_coat017a'],
-                     ['MAPbBrI_DMSO_2ME_coat018'],
-                     ['MAPbBrI_DMSO_2ME_coat014b'],
                      ['test_thickness']]
 
         for index in range(len(name_ls04)):
@@ -238,11 +234,54 @@ class ShowData(QMainWindow):
             name_ls04[index].append(name_ls04[index][0] + '_eiger')
             name_ls04[index].append(name_ls04[index][0] + '_eiger')
 
+        name_list_ref1 = ['Coat1_FAPbI_Cl05M_Refl',
+                          'Coat04_Refl',
+                          'Coat04b_Refl',
+                          'Coat04c_Refl',
+                          'Coat05_Refl',
+                          'Coat05b_Refl']
+
+        name_list_ref2 = ['Coat_06_Br02_Refl',
+                          'Coat_07_Br06_Refl',
+                          'Coat_07B_Refl',
+                          'Coat_07B_after_Refl']
+
+        name_list_ref1 = ['Ref_test_Refl',
+                          'Ref_airblade_Refl',
+                          'Ref_heating_after_airblade_Refl',
+                          'Ref_heat_Refl',
+                          'Ref_heat_150_Refl',
+                          'Ref_heat_150_again_Refl']
+
+        name_list_ref1 = ['MACl1M_DMF_airblade_QXRD_coat006',
+                         'MACl1M_DMF_airblade_QXRD_coat006a',
+                         'MACl1M_DMF_airblade_QXRD_coat007',
+                         'MACl1M_DMF_airblade_QXRD_coat007a',
+                         'MAPbBrI_DMSO_2ME_coat10',
+                         'MAPbBrI_DMSO_2ME_coat11',
+                         'MAPbBrI_DMSO_2ME_coat12',
+                         'MAPbBrI_DMSO_2ME_coat16',
+                         'MAPbBrI_DMSO_2ME_coat18',
+                         'MAFAPbI_DME_coat20']
+
+        name_list_ref3 = ['MACl1M_DMF_slow_dry_coat004d',
+                         'MACl1M_DMF_slow_dry_coat004f',
+                         'MACl1M_DMF_slow_dry_coat005',
+                         'MAFAPbI_DME_coat21',
+                         'MAFAPbI_DME_coat22']
+
+        name_list_ref4 = ['MAPbBrI_DMSO_2ME_coat8',
+                         'MAPbBrI_DMSO_2ME_coat9b',
+                         'MAPbBrI_DMSO_2ME_coat13',
+                         'MAPbBrI_DMSO_2ME_coat14',
+                         'MAPbBrI_DMSO_2ME_coat15',
+                         'MAPbBrI_DMSO_2ME_coat17',
+                         'MAPbBrI_DMSO_2ME_coat19']
+
         # name_list = name_ls01 # one xrd
         # name_list = name_ls02 # two xas, one xrd
-        name_list = name_ls03 # one xas, two xrd
-        # name_list = name_ls04 # two xas, two xrd
-
+        # name_list = name_ls03 # one xas, two xrd
+        name_list = name_ls04 # two xas, two xrd
         self.repeat = len(name_list)  # number of xas or xrd
 
         # file_directory = r"Y:\20220720\2022042008"
@@ -251,6 +290,12 @@ class ShowData(QMainWindow):
         poni_file1 = 'LaB6_12936p37eV_realCalib_sum.poni'
         poni_file2 = 'LaB6_13591p12eV_realCalib_sum.poni'
         file_apdx = '_resultCluster.h5'
+
+        # name_list_refl = name_list_ref3
+        name_list_refl = name_list_ref4
+        refl_directory = r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform'  # file_directory
+        # refl_directory = r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData"
+
         for k in range(len(name_list)):
             if len(name_list[k]) > 1:
                 if name_list[k][0] == name_list[k][1]:
@@ -291,31 +336,11 @@ class ShowData(QMainWindow):
                                                             'integration file appendix': file_apdx,
                                                             'PONI file': poni_file1}
 
-        name_list_refl = ['Coat1_FAPbI_Cl05M_Refl',
-                          'Coat04_Refl',
-                          'Coat04b_Refl',
-                          'Coat04c_Refl',
-                          'Coat05_Refl',
-                          'Coat05b_Refl',
-                          'Coat_06_Br02_Refl',
-                          'Coat_07_Br06_Refl',
-                          'Coat_07B_Refl',
-                          'Coat_07B_after_Refl']
-        name_list_refl = ['Ref_test_Refl',
-                          'Ref_airblade_Refl',
-                          'Ref_heating_after_airblade_Refl',
-                          'Ref_heat_Refl',
-                          'Ref_heat_150_Refl',
-                          'Ref_heat_150_again_Refl']
-        name_list_refl = ['MAFAPbI_DME_coat22']
-
-        refl_directory = r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform' # file_directory
-        # refl_directory = r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData"
         for index in range(len(name_list_refl)):
             self.path_name_dict['refl_' + str(index + 1)] = {'directory': refl_directory,
-                                                             'raw file': name_list_refl[index]
-                                                             # 'align data number':'3022',
-                                                             # 'to time':'2022-04-23T12:02:44'
+                                                             'raw file': name_list_refl[index],
+                                                             'align data number':'3022',
+                                                             'to time':'2022-04-23T12:02:44'
                                                              }
 
         # self.path_name_dict['pl'] = {'directory':r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
@@ -651,7 +676,7 @@ class ShowData(QMainWindow):
                 self.methodict[tooltabname].show_phase(self)
 
         else:
-            if tooltabname[0:3] == 'xas' and toolitemname == 'normalizing' and \
+            if tooltabname[0:3] == 'xas' and (toolitemname in ['normalizing', 'normalized']) and \
                     parawidget.objectName()[0:8] == 'Savitzky':
                 self.methodict[tooltabname].filtered = True
 

@@ -85,9 +85,9 @@ class DockGraph():
 
     def gendock(self, winobj):
         self.dockobj = QDockWidget(self.label, winobj)
-        if self.label[0:3] == 'xrd': self.dockobj.setMinimumWidth(winobj.screen_width * .5)
-        else: self.dockobj.setMinimumWidth(winobj.screen_width * .2)
-        # self.dockobj.setMinimumWidth(winobj.screen_width * .3)
+        # if self.label[0:3] == 'xrd': self.dockobj.setMinimumWidth(winobj.screen_width * .5)
+        # else: self.dockobj.setMinimumWidth(winobj.screen_width * .2)
+        self.dockobj.setMinimumWidth(winobj.screen_width * .5)
         winobj.addDockWidget(Qt.BottomDockWidgetArea, self.dockobj)
         if len(winobj.gdockdict) > 3: # only accommodate two docks
             self.dockobj.setFloating(True)
@@ -108,7 +108,7 @@ class DockGraph():
         index = winobj.controltabs.indexOf(self.tooltab)
         winobj.controltabs.removeTab(index)
 
-class TabGraph_index():
+class TabGraph_index(): # for xrd analysis
     def __init__(self, name):
         self.label = name # e.g. phase 1, phase 2,...
 
@@ -270,8 +270,14 @@ class TabGraph():
                 if key[-1] == ')':
                     methodobj.actwidgets[tabname][key].setShortcut(key[-7:-1])
                 # tempfunc = getattr(methodobj, methodobj.actions[tabname][key])
-                methodobj.actwidgets[tabname][key].clicked.connect(
-                    lambda state, k = key: methodobj.actions[tabname][k](winobj)) # shock !!!
+
+                if key == 'set range': # for update the range of 2D plot
+                    methodobj.actwidgets[tabname][key].clicked.connect(
+                        lambda: methodobj.actions[tabname][key](winobj, methodobj, tabname))  # e,g, MainWin, XAS, munorm-T
+                else:
+                    methodobj.actwidgets[tabname][key].clicked.connect(
+                        lambda : methodobj.actions[tabname][key](winobj))  # shock !!!
+                        # lambda state, k = key: methodobj.actions[tabname][k](winobj)) # shock !!!
                 self.itemlayout.addWidget(methodobj.actwidgets[tabname][key])
 
         # lineEdit
@@ -321,6 +327,46 @@ class Methods_Base():
         self.maxhue = 100  # 100 colorhues
         self.huestep = 7 # color rotation increment
 
+    def update_range(self, winobj, methodobj, tabname):
+        try:
+            time_start = methodobj.entrytimesec[int(methodobj.linewidgets[tabname]['y min'].text()),0]
+            time_end = methodobj.entrytimesec[int(methodobj.linewidgets[tabname]['y max'].text()), 1]
+        except:
+            print('check your input values')
+        else:
+            for key in winobj.methodict: # xas, xrd, refl
+                for sub_key in winobj.methodict[key].checksdict: # norm-T, chi-T, ...
+                    if (sub_key[-2:] == '-T' or sub_key == 'time series') and winobj.methodict[key].checksdict[sub_key].isChecked():
+                        pw = winobj.gdockdict[key].tabdict[sub_key].tabplot
+                        try:
+                            y_min = np.where(winobj.methodict[key].entrytimesec[:,0] - time_start <= 0)[0][-1]
+                        except:
+                            y_min = 0
+                        try:
+                            y_max = np.where(winobj.methodict[key].entrytimesec[:,1] - time_end >= 0)[0][0]
+                        except:
+                            y_max = winobj.methodict[key].entrytimesec.shape[0]
+                        try:
+                            pw.setYRange(y_min, y_max)
+                            winobj.methodict[key].linewidgets[sub_key]['y min'].setText(str(y_min))
+                            winobj.methodict[key].linewidgets[sub_key]['y max'].setText(str(y_max))
+                            if os.path.isfile(winobj.methodict[key].exportfile):
+                                with h5py.File(winobj.methodict[key].exportfile, 'a') as f:
+                                    f.create_dataset('y min', data=y_min, dtype='int')
+                                    f.create_dataset('y max', data=y_max, dtype='int')
+
+                        except:
+                            print('check your input values')
+
+                        for item in pw.childItems():
+                            if type(item).__name__ == 'ColorBarItem':
+                                item_colorbar = item
+
+                        if item_colorbar:
+                            item_colorbar.setLevels((winobj.methodict[key].linewidgets[sub_key]['z min'].text(),
+                                                     winobj.methodict[key].linewidgets[sub_key]['z max'].text()))
+
+
     def plot_pointer(self, tabname, p_x, p_y, symbol, size):
         self.data_timelist[0][tabname]['pointer'].data = np.array([[p_x], [p_y]]).transpose()
         self.data_timelist[0][tabname]['pointer'].symbol = symbol
@@ -356,7 +402,7 @@ class Methods_Base():
                 self.data_process(False)
 
     def index_from_time(self, slidervalue): # update self.index
-        self.timediff = slidervalue - self.entrytimesec[::,0] # 4294967289 1650706650
+        self.timediff = slidervalue - self.entrytimesec[::,0]
         if self.timediff[0] < 0:
             self.index = 0
         else:
@@ -426,17 +472,18 @@ class XAS(Methods_Base):
     def __init__(self, path_name_widget):
         # below are needed for each method (xas, xrd,...)
         super(XAS, self).__init__()
-        self.availablemethods = ['raw', 'normalizing', 'normalized', 'chi(k)', 'chi(r)', 'E0-T', 'Jump-T', 'mu_norm-T',
+        self.availablemethods = ['raw', 'normalizing', 'normalized', 'chi(k)', 'chi(r)', 'E0-t', 'Jump-t', 'mu_norm-T',
                                  'chi(k)-T', 'chi(r)-T', 'LCA(internal) single', 'LCA(internal)-T']
-        self.availablecurves['raw'] = ['log(I0)', 'log(I1)']
+        self.availablecurves['raw'] = ['I0', 'I1']
         self.availablecurves['normalizing'] = ['mu','filter by time','filter by energy',
                                                'pre-edge', 'pre-edge points',
                                                'post-edge', 'post-edge points']
-        self.availablecurves['normalized'] = ['normalized mu','reference','post-edge bkg']
+        self.availablecurves['normalized'] = ['normalized mu','filter by time','filter by energy',
+                                              'reference','post-edge bkg']
         self.availablecurves['chi(k)'] = ['chi-k','window']
         self.availablecurves['chi(r)'] = ['chi-r','Re chi-r','Im chi-r']
-        self.availablecurves['E0-T'] = ['pointer']
-        self.availablecurves['Jump-T'] = ['pointer']
+        self.availablecurves['E0-t'] = ['pointer']
+        self.availablecurves['Jump-t'] = ['pointer']
         self.availablecurves['mu_norm-T'] = ['pointer']
         self.availablecurves['chi(k)-T'] = ['pointer']
         self.availablecurves['chi(r)-T'] = ['pointer']
@@ -455,9 +502,9 @@ class XAS(Methods_Base):
                                     'left':' k <sup> 2 </sup> <font> &chi; </font>'},
                           'chi(r)':{'bottom':'<font> R / &#8491; </font>',
                                     'left':''},
-                          'E0-T':{'bottom':'Data number',
+                          'E0-t':{'bottom':'Data number',
                                   'left':'Energy/eV'},
-                          'Jump-T': {'bottom': 'Data number',
+                          'Jump-t': {'bottom': 'Data number',
                                    'left': ''},
                           'mu_norm-T': {'bottom': 'Energy/eV',
                                        'left': 'Data number'},
@@ -491,11 +538,11 @@ class XAS(Methods_Base):
                                           'pre-edge para 2': Paraclass(values=(.33, .05, .95, .01)), # 1/3 of e0 - pre 1
                                           'post-edge para 2': Paraclass(values=(.01, 0, 1, .01)), # 0.01 of last point - e0
                                           'post-edge para 1': Paraclass(values=(.33, .05, .95, .01))}, # 1/3 of post 1 - e0
-                           'normalized':{'rbkg':Paraclass(values=(1,1,3,.1))},
-                                         # 'Savitzky-Golay window (time)':Paraclass(values=(11,5,100,2)),
-                                         # 'Savitzky-Golay order (time)':Paraclass(values=(1,1,4,1)),
-                                         # 'Savitzky-Golay window (energy)': Paraclass(values=(11, 5, 100, 2)),
-                                         # 'Savitzky-Golay order (energy)': Paraclass(values=(1, 1, 4, 1)), 
+                           'normalized':{'rbkg':Paraclass(values=(1,1,3,.1)),
+                                         'Savitzky-Golay window (time)':Paraclass(values=(1,1,100,2)),
+                                         'Savitzky-Golay order (time)':Paraclass(values=(1,1,4,1)),
+                                         'Savitzky-Golay window (energy)': Paraclass(values=(1, 1, 100, 2)),
+                                         'Savitzky-Golay order (energy)': Paraclass(values=(1, 1, 4, 1)),},
                            'chi(k)':{'kmin':Paraclass(values=(.9,0,3,.1)),
                                      'kmax':Paraclass(values=(6,3,20,.1)),
                                      'dk':Paraclass(values=(0,0,1,1)),
@@ -504,21 +551,31 @@ class XAS(Methods_Base):
                            'mu_norm-T':{'flat norm':Paraclass(strings=('flat',['flat','norm']))}}
 
         self.actions = {'normalizing':{'filter all': self.filter_all_normalizing},
+                        'normalized': {'filter all': self.filter_all_normalized},
                         'mu_norm-T':{'x, y range start (Ctrl+R)': self.range_select,
                                      'do internal LCA (Ctrl+Y)': self.lca_internal,
-                                     'Export time series (Ctrl+X)': self.export_ts}}
+                                     'Export time series (Ctrl+X)': self.export_ts,
+                                     'update range': self.update_range},
+                        'chi(k)-T':{'update range': self.update_range},
+                        'chi(r)-T':{'update range': self.update_range}}
 
         self.linedit = {'mu_norm-T': {'z max':'102',
                                       'z min':'98',
+                                      'y min':'0',
+                                      'y max': '100',
                                       'components (internal LCA)': '2',
                                       'range start (y)': '100',
                                       'range end (y)': '200',
                                       'range start (x, data point)': '',
                                       'range end (x, data point)': ''},
                         'chi(k)-T': {'z max':'0.3',
-                                     'z min':'-0.3'},
+                                     'z min':'-0.3',
+                                     'y min': '0',
+                                     'y max': '100'},
                         'chi(r)-T': {'z max': '0.05',
-                                     'z min': '0'}}
+                                     'z min': '0',
+                                     'y min': '0',
+                                     'y max': '100'}}
 
                                         # self.average = int(path_name_widget['average (time axis)'].text())  # number of average data points along time axis, an odd number
         self.range = path_name_widget['energy range (eV)'].text() # useful for time_range!
@@ -530,9 +587,9 @@ class XAS(Methods_Base):
         self.filter_flag_normalized = False
 
         self.filtered = False
-        self.data_error = .001
+        self.data_error = .001 # user defined data error
 
-    def export_ts(self, winobj):
+    def export_ts(self, winobj): # this could add to the principle data h5 file that's already there
         resultfile = h5py.File(os.path.join(self.exportdir, 'mu_norm_time_series.h5'), 'w')
         resultfile.create_dataset('mu_norm', data=np.array(self.espace))
         resultfile.create_dataset('Energy', data=self.entrydata[0,0,:])
@@ -610,13 +667,13 @@ class XAS(Methods_Base):
                 self.grouplist.append(Group(name='spectrum' + str(index)))
 
             if self.filter_flag_normalizing and not self.filter_flag_normalized:
-                mu, mu_error = self.filter_single_point(index)
+                mu, mu_error = self.filter_single_point(index, 'normalizing')
                 self.exafs_process_single(index, mu, mu_error)
-            else: self.exafs_process_single(index, mu, self.data_error)
-
-            # if self.filter_flag_normalized and not self.filter_flag_normalizing:
-            #     mu = self.filter_single_point(index, Energy, self.grouplist[index].norm, 'normalized')
-            #     self.exafs_process_single(index, Energy, mu)
+            elif self.filter_flag_normalized and not self.filter_flag_normalizing:
+                mu, mu_error = self.filter_single_point(index, 'normalized')
+                self.exafs_process_single(index, mu, mu_error)
+            else:
+                self.exafs_process_single(index, mu, self.data_error)
 
             self.prep_progress.setValue(int((index + 1) / self.entrydata.shape[0] * 100))
             # self.parameters['chi(k)']['kmax'].upper = self.grouplist[index].k[-1]
@@ -631,7 +688,7 @@ class XAS(Methods_Base):
 
     def exafs_process_single(self, index, mu, mu_error):
         Energy = self.entrydata[index, 0, ::]
-        self.grouplist[index].mu_error = mu_error
+        self.grouplist[index].mu_error = mu_error # this is customized attribute?
         try:
             e0 = find_e0(Energy, mu, group=self.grouplist[index])
         except: print('bad data')
@@ -660,6 +717,10 @@ class XAS(Methods_Base):
     def plot_from_load(self, winobj): # for time series
         winobj.setslider()
         # self.curvedict['time series']['pointer'].setChecked(True)
+        for key in self.curvedict:
+            if self.checksdict[key].isChecked() and 'pointer' in self.curvedict[key]:
+                self.curvedict[key]['pointer'].setChecked(True)
+
         self.E0 = []  # time series
         self.Jump = []
         self.espace = []
@@ -683,19 +744,19 @@ class XAS(Methods_Base):
             self.rspace.append(self.grouplist[index].chir_mag)
             self.prep_progress.setValue(int((index + 1) / self.entrytimesec.shape[0] * 100))
 
-        if self.checksdict['E0-T'].isChecked():
-            pw = winobj.gdockdict[self.method_name].tabdict['E0-T'].tabplot
+        if self.checksdict['E0-t'].isChecked():
+            pw = winobj.gdockdict[self.method_name].tabdict['E0-t'].tabplot
             for index in reversed(range(len(pw.items))): # shocked!
-                if pw.items[index].name() == 'E0-T': pw.removeItem(pw.items[index])
+                if pw.items[index].name() == 'E0-t': pw.removeItem(pw.items[index])
 
-            pw.plot(range(self.entrytimesec.shape[0]), self.E0, symbol='o', symbolSize=10, symbolPen='r', name='E0-T')
+            pw.plot(range(self.entrytimesec.shape[0]), self.E0, symbol='o', symbolSize=10, symbolPen='r', name='E0-t')
 
-        if self.checksdict['Jump-T'].isChecked():
-            pw = winobj.gdockdict[self.method_name].tabdict['Jump-T'].tabplot
+        if self.checksdict['Jump-t'].isChecked():
+            pw = winobj.gdockdict[self.method_name].tabdict['Jump-t'].tabplot
             for index in reversed(range(len(pw.items))):  # shocked!
-                if pw.items[index].name() == 'Jump-T': pw.removeItem(pw.items[index])
+                if pw.items[index].name() == 'Jump-t': pw.removeItem(pw.items[index])
 
-            pw.plot(range(self.entrytimesec.shape[0]), self.Jump, symbol='o', symbolSize=10, symbolPen='r', name='Jump-T')
+            pw.plot(range(self.entrytimesec.shape[0]), self.Jump, symbol='o', symbolSize=10, symbolPen='r', name='Jump-t')
 
         if self.checksdict['mu_norm-T'].isChecked(): # shocked! this naughty chi-k has irregular shape!
             pw = winobj.gdockdict[self.method_name].tabdict['mu_norm-T'].tabplot
@@ -744,73 +805,78 @@ class XAS(Methods_Base):
         img_ts = pg.ImageItem(image=np.transpose(rspace_array))
         pw.addItem(img_ts)
         color_map = pg.colormap.get('CET-R4')
-        color_bar_ts = pg.ColorBarItem(values=(float(self.linedit[mode]['z min']),
-                                                    float(self.linedit[mode]['z max'])), cmap=color_map)
+        color_bar_ts = pg.ColorBarItem(values=(float(self.linewidgets[mode]['z min'].text()),
+                                                    float(self.linewidgets[mode]['z max'].text())), cmap=color_map)
         color_bar_ts.setImageItem(img_ts, pw)
+        if hasattr(self, 'y_range'):
+            pw.setYRange(self.y_range[0], self.y_range[1])
 
-    def filter_single_point(self, data_index):
-        # if mode == 'normalizing':
-        # time
-        mode = 'normalizing'
+    def filter_single_point(self, data_index, mode):
         sg_win = int(self.parameters[mode]['Savitzky-Golay window (time)'].setvalue)
         sg_order = int(self.parameters[mode]['Savitzky-Golay order (time)'].setvalue)
-        # below is a function!
-        mu = lambda index: np.log(self.entrydata[index, 1, ::] / self.entrydata[index, 2, ::])
+        sg_win_e = int(self.parameters[mode]['Savitzky-Golay window (energy)'].setvalue)
+        sg_order_e = int(self.parameters[mode]['Savitzky-Golay order (energy)'].setvalue)
 
-        # if mode == 'normalized':
-        #     mu = lambda index: self.grouplist[index].norm # this one is dangerous as it uses smoothed/processed data
+        if mode == 'normalizing':
+            mu = lambda index: np.log(self.entrydata[index, 1, ::] / self.entrydata[index, 2, ::])
 
-        if sg_win > sg_order + 1:
-            sg_data = []
-            if data_index < (sg_win - 1) / 2:# padding with the first data
-                for index in np.arange(0, (sg_win - 1) / 2 - data_index, dtype=int): sg_data.append(mu(0))
-                for index in np.arange(0, (sg_win + 1) / 2 + data_index, dtype=int): sg_data.append(mu(index))
+        if mode == 'normalized':
+            mu = lambda index: self.grouplist[index].norm  # this one is dangerous as it uses smoothed/processed data
 
-            elif data_index >  self.entrydata.shape[0] - (sg_win + 1) / 2: # padding with the last data
-                for index in np.arange(self.entrydata.shape[0], data_index + (sg_win + 1) / 2, dtype=int): sg_data.append(mu(-1))
-                for index in np.arange(data_index - (sg_win - 1) / 2, self.entrydata.shape[0], dtype=int): sg_data.append(mu(index))
+        if sg_win == 1 and sg_win_e == 1:
+            return mu(data_index), self.grouplist[data_index].mu_error
+            # is this a good way? error should be different at different stage???
 
-            else:
-                for index in np.arange(data_index - (sg_win - 1) / 2, data_index + (sg_win + 1) / 2, dtype=int): sg_data.append(mu(index))
-
-            sg_data = np.array(sg_data)
-            mu_filtered = savgol_coeffs(sg_win, sg_order, use='dot').dot(sg_data)
-            # estimate the uncertainty of the data according to "ERROR	ANALYSIS	2:	LEAST-SQUARES	FITTING"
-            mu_filtered_error = 0
-            for k in range(sg_win):
-                mu_filtered_error = mu_filtered_error + (sg_data[k] - savgol_coeffs(sg_win, sg_order, pos=k, use='dot').dot(sg_data))**2
-
-            mu_filtered_error = np.sqrt(mu_filtered_error / (sg_win - sg_order) + self.data_error**2) # actually the latter can be neglected
         else:
-            mu_filtered = np.log(self.entrydata[data_index, 1, :] / self.entrydata[data_index, 2, :])
-            mu_filtered_error = self.data_error
+        # time
+            if sg_win > sg_order + 1:
+                sg_data = []
+                if data_index < (sg_win - 1) / 2:# padding with the first data
+                    for index in np.arange(0, (sg_win - 1) / 2 - data_index, dtype=int): sg_data.append(mu(0))
+                    for index in np.arange(0, (sg_win + 1) / 2 + data_index, dtype=int): sg_data.append(mu(index))
 
-        if 'filter by time' in self.curve_timelist[0][mode]:
-            self.data_timelist[0][mode]['filter by time'].data = np.transpose([self.entrydata[data_index, 0, :], mu_filtered])
+                elif data_index >  self.entrydata.shape[0] - (sg_win + 1) / 2: # padding with the last data
+                    for index in np.arange(self.entrydata.shape[0], data_index + (sg_win + 1) / 2, dtype=int): sg_data.append(mu(-1))
+                    for index in np.arange(data_index - (sg_win - 1) / 2, self.entrydata.shape[0], dtype=int): sg_data.append(mu(index))
 
-        # energy
-        sg_win = int(self.parameters[mode]['Savitzky-Golay window (energy)'].setvalue)
-        sg_order = int(self.parameters[mode]['Savitzky-Golay order (energy)'].setvalue)
+                else:
+                    for index in np.arange(data_index - (sg_win - 1) / 2, data_index + (sg_win + 1) / 2, dtype=int): sg_data.append(mu(index))
 
-        if sg_win > sg_order + 1:
-            # mu_filtered = scipy.signal.savgol_filter(mu_filtered, sg_win, sg_order, mode='nearest')
-            # construct a matrix based on mu_filtered
-            sg_data = []
-            for k in range(sg_win):
-                sg_data.append(np.concatenate((np.ones(k) * mu_filtered[0], mu_filtered, np.ones(sg_win - k) * mu_filtered[-1])))
+                sg_data = np.array(sg_data)
+                mu_filtered = savgol_coeffs(sg_win, sg_order, use='dot').dot(sg_data)
+                # estimate the uncertainty of the data according to "ERROR	ANALYSIS	2:	LEAST-SQUARES	FITTING"
+                mu_filtered_error = 0
+                for k in range(sg_win):
+                    mu_filtered_error = mu_filtered_error + (sg_data[k] - savgol_coeffs(sg_win, sg_order, pos=k, use='dot').dot(sg_data))**2
 
-            sg_data = np.array(sg_data)[:, (sg_win - 1) / 2 : -(sg_win + 1) / 2 - 1]
-            mu_filtered = savgol_coeffs(sg_win, sg_order, use='dot').dot(sg_data)
-            mu_filtered_error = 0
-            for k in range(sg_win):
-                mu_filtered_error = mu_filtered_error + (sg_data[k] - savgol_coeffs(sg_win, sg_order, pos=k, use='dot').dot(sg_data))**2
+                mu_filtered_error = np.sqrt(mu_filtered_error / (sg_win - sg_order) + self.data_error**2) # actually the latter can be neglected
+            else:
+                mu_filtered = np.log(self.entrydata[data_index, 1, :] / self.entrydata[data_index, 2, :])
+                mu_filtered_error = self.data_error
 
-            mu_filtered_error = np.sqrt(mu_filtered_error / (sg_win - sg_order) + self.data_error**2) # actually the latter can be neglected
-        
-        if 'filter by energy' in self.curve_timelist[0][mode]:
-            self.data_timelist[0][mode]['filter by energy'].data = np.transpose([self.entrydata[data_index, 0, :], mu_filtered])
+            if 'filter by time' in self.curve_timelist[0][mode]:
+                self.data_timelist[0][mode]['filter by time'].data = np.transpose([self.entrydata[data_index, 0, :], mu_filtered])
 
-        return mu_filtered, mu_filtered_error
+            # energy
+            if sg_win_e > sg_order_e + 1:
+                # mu_filtered = scipy.signal.savgol_filter(mu_filtered, sg_win_e, sg_order_e, mode='nearest')
+                # construct a matrix based on mu_filtered
+                sg_data = []
+                for k in range(sg_win_e):
+                    sg_data.append(np.concatenate((np.ones(k) * mu_filtered[0], mu_filtered, np.ones(sg_win_e - k) * mu_filtered[-1])))
+
+                sg_data = np.array(sg_data)[:, (sg_win_e - 1) / 2 : -(sg_win_e + 1) / 2 - 1]
+                mu_filtered = savgol_coeffs(sg_win_e, sg_order_e, use='dot').dot(sg_data)
+                mu_filtered_error = 0
+                for k in range(sg_win_e):
+                    mu_filtered_error = mu_filtered_error + (sg_data[k] - savgol_coeffs(sg_win_e, sg_order_e, pos=k, use='dot').dot(sg_data))**2
+
+                mu_filtered_error = np.sqrt(mu_filtered_error / (sg_win_e - sg_order_e) + self.data_error**2) # actually the latter can be neglected
+
+            if 'filter by energy' in self.curve_timelist[0][mode]:
+                self.data_timelist[0][mode]['filter by energy'].data = np.transpose([self.entrydata[data_index, 0, :], mu_filtered])
+
+            return mu_filtered, mu_filtered_error
 
     def output_txt(self, data_single, index):
         try: data_start = np.where(data_single[:, 0] - self.energy_range[0] >= 0)[0][0]
@@ -829,21 +895,22 @@ class XAS(Methods_Base):
         except:
             data_start = 0
         try:
-            data_end = np.where(self.energy_range[1] - data_single >= 0)[0][-1]
+            data_end = np.where(self.energy_range[1] - data_single <= 0)[0][0]
         except:
-            data_end = -1
-        data_range = np.s_[data_start:data_end]
+            data_end = data_single.shape[0]
+        data_range = np.s_[data_start:data_end + 1] # critical!!!
         return data_range
 
     def load_group(self,winobj):
         min_len = 1e5
-        for index in range(len(self.entrydata)): # find the min array length
+        for index in range(4): # find the min array length, four is enough
             if self.entrydata[index].shape[1] < min_len: min_len = self.entrydata[index].shape[1]
 
         for index in range(len(self.entrydata)): # make data same length
             self.entrydata[index] = self.entrydata[index][:,0:min_len]
 
         self.entrydata = np.array(self.entrydata) # now make a good array!
+
         tempfile_smoothed = os.path.join(self.exportdir, self.fileshort + '_Group_List_Smoothed')
         tempfile = os.path.join(self.exportdir, self.fileshort + '_Group_List')
         if os.path.isfile(tempfile_smoothed):
@@ -862,24 +929,33 @@ class XAS(Methods_Base):
         I1 = self.entrydata[self.index, 2, ::]
         mu = np.log(I0 / I1)
         mu_filtered = mu
-        
+        mu_filtered_error = self.grouplist[self.index].mu_error
         # this ensures that smoothed data get processed once you adjust those filtering parameters.
         # this function also sets data_timelist for filtered curves.
         # by abandon 'normalized' filter, there is less complexity.
         # when moving the slider, curves in other tabs change back to unfiltered state. this is actually good--fast!
-        if self.filtered: 
-            mu_filtered, mu_filtered_error = self.filter_single_point(self.index)
-            self.exafs_process_single(self.index, mu_filtered, mu_filtered_error)
-        else:
-            if para_update: self.exafs_process_single(self.index, mu_filtered, self.grouplist[self.index].mu_error)
-        
+
+        if self.filtered: # detected by MainWin; but will the following work?
+            if self.checksdict['normalizing'].isChecked():
+                mu_filtered, mu_filtered_error = self.filter_single_point(self.index, 'normalizing')
+                if not (mu_filtered == mu).all():
+                    self.exafs_process_single(self.index, mu_filtered, mu_filtered_error)
+
+            if self.checksdict['normalized'].isChecked():
+                mu_filtered_2, mu_filtered_error_2 = self.filter_single_point(self.index, 'normalized')
+                if not (mu_filtered_2 == mu_filtered).all():
+                    self.exafs_process_single(self.index, mu_filtered, mu_filtered_error)
+
+        # for other parameters
+        if para_update: self.exafs_process_single(self.index, mu_filtered, mu_filtered_error)
+
         self.dynamictitle = 'data' + str(self.index + 1) + '\t start:' + self.startime + '\t end:' + self.endtime
 
         # raw
         if 'I0' in self.curve_timelist[0]['raw']:
-            self.data_timelist[0]['raw']['I0'].data = np.transpose([Energy, np.log(I0 * 10)])
+            self.data_timelist[0]['raw']['I0'].data = np.transpose([Energy, I0])
         if 'I1' in self.curve_timelist[0]['raw']:
-            self.data_timelist[0]['raw']['I1'].data = np.transpose([Energy, np.log(I1 * 10)])
+            self.data_timelist[0]['raw']['I1'].data = np.transpose([Energy, I1])
         # norm
         if 'mu' in self.curve_timelist[0]['normalizing']: self.data_timelist[0]['normalizing']['mu'].data = np.transpose([Energy, mu])
 
@@ -941,14 +1017,14 @@ class XAS(Methods_Base):
         if 'Im chi-r' in self.curve_timelist[0]['chi(r)']:
             self.data_timelist[0]['chi(r)']['Im chi-r'].data = np.transpose([self.grouplist[self.index].r, self.grouplist[self.index].chir_im])
 
-        # E0-T
-        if 'pointer' in self.curve_timelist[0]['E0-T']:
-            try: self.plot_pointer('E0-T', self.index, self.E0[self.index], '+', 30)
+        # E0-t
+        if 'pointer' in self.curve_timelist[0]['E0-t']:
+            try: self.plot_pointer('E0-t', self.index, self.E0[self.index], '+', 30)
             except: print('Load time series first')
 
-        # Jump-T
-        if 'pointer' in self.curve_timelist[0]['Jump-T']:
-            try: self.plot_pointer('Jump-T', self.index, self.Jump[self.index], '+', 30)
+        # Jump-t
+        if 'pointer' in self.curve_timelist[0]['Jump-t']:
+            try: self.plot_pointer('Jump-t', self.index, self.Jump[self.index], '+', 30)
             except: print('Load time series first')
 
         # mu_norm-T
@@ -1083,9 +1159,12 @@ class XAS_INFORM_2(XAS):
 
         # read in data
         if self.entrydata == []:  # Energy, I0, I1
-            datafile = os.path.join(self.exportdir, self.fileshort + '_spectrum_all.h5')
-            if os.path.isdir(self.exportdir) and os.path.isfile(datafile):
-                f = h5py.File(datafile, 'r')
+            self.exportfile = os.path.join(self.exportdir, self.fileshort + '_spectrum_all.h5')
+            if os.path.isdir(self.exportdir) and os.path.isfile(self.exportfile):
+                f = h5py.File(self.exportfile, 'r')
+                if 'y min' in list(f.keys()):
+                    self.y_range = [f['y min'], f['y max']]
+
                 for spectrum in f.keys():
                     data = np.zeros((f[spectrum].shape[0], f[spectrum].shape[1]), dtype = 'float32')
                     f[spectrum].read_direct(data)
@@ -1117,7 +1196,7 @@ class XAS_INFORM_2(XAS):
                         data.read_direct(data_single)                        
                         data_all[key] = np.array(data_single)
                 
-                f = h5py.File(datafile, 'w')
+                f = h5py.File(self.exportfile, 'w')
                 data4xrd = []
                 for index in range(data.shape[0]): # output format has to be Energy, I0, I1
                     if data.shape[1] % 2 == 0:
@@ -1136,25 +1215,25 @@ class XAS_INFORM_2(XAS):
                         # self.output_txt(np.array([data_all['energy'][index, 1:half_index + 1],  # E0
                         #                           data_all['I0a'][index, 1:half_index + 1] + data_all['I0b'][index, 1:half_index + 1],  # I0
                         #                           data_all['I1'][index, 1:half_index + 1]]).T, 2 * index)  # I1
-                        back_sel = np.s_[data.shape[1] - 1:half_index - 1:-1] # include the middle point
+                        back_sel = np.s_[data.shape[1] - 2:half_index - 1:-1] # include the middle point, because the last data is xrd!
                         # self.output_txt(np.array([data_all['energy'][index, back_sel],  # E0
                         #                           data_all['I0a'][index, back_sel] + data_all['I0b'][index, back_sel], # I0
                         #                           data_all['I1'][index, back_sel]]).T, 2 * index + 1)  # I1
 
                     data_range = self.sel_by_energy_range(data_all['energy'][index, 0:half_index + 1])
-                    data_half = np.array([data_all['energy'][index, data_range],  # E0
+                    data_half_1 = np.array([data_all['energy'][index, data_range],  # E0
                                           data_all['I0a'][index, data_range] + data_all['I0b'][index, data_range],  # I0
                                           data_all['I1'][index, data_range]])  # I1
-                    self.entrydata.append(data_half)
-                    f.create_dataset('spectrum_{:04d}'.format(index * 2), data=data_half.T)
+                    self.entrydata.append(data_half_1)
+                    f.create_dataset('spectrum_{:04d}'.format(index * 2), data=data_half_1.T)
 
                     data_range = self.sel_by_energy_range(data_all['energy'][index, back_sel])
-                    data_half = np.array([data_all['energy'][index, back_sel][data_range],  # E0
+                    data_half_2 = np.array([data_all['energy'][index, back_sel][data_range],  # E0
                                           data_all['I0a'][index, back_sel][data_range] +
                                           data_all['I0b'][index, back_sel][data_range],  # I0
                                           data_all['I1'][index, back_sel][data_range]])  # I1
-                    self.entrydata.append(data_half)
-                    f.create_dataset('spectrum_{:04d}'.format(index * 2 + 1), data=data_half.T)
+                    self.entrydata.append(data_half_2)
+                    f.create_dataset('spectrum_{:04d}'.format(index * 2 + 1), data=data_half_2.T)
 
                     # extract data for xrd normalization
                     # the first xrd
@@ -1345,14 +1424,17 @@ class XRD(Methods_Base):
                            }
         self.actions = {'integrated':{"interpolate along q": self.interpolate_data,
                                       "find peaks (Ctrl+F)": self.find_peak_all},
-                       'time series':{"clear rainbow map (Ctrl+E)": self.show_clear_ts,
+                       'time series':{'update range': self.update_range,
+                                      "clear rainbow map (Ctrl+E)": self.show_clear_ts,
                                       "range start (Ctrl+R)": self.range_select,
                                       "catalog peaks (Ctrl+T)": self.catalog_peaks,
                                       "assign phases (Ctrl+A)": self.assign_phases,
                                       "clear peaks (Ctrl+P)": self.show_clear_peaks,
                                       "index phases (Ctrl+I)": self.index_phases}} # button name and function name
 
-        self.linedit = {'time series': {'range start': '100',
+        self.linedit = {'time series': {'y min':'0',
+                                        'y max': '100',
+                                        'range start': '100',
                                         'range end': '200',
                                         'exclude from':'0',
                                         'exclude to':'0'}}
@@ -1374,43 +1456,51 @@ class XRD(Methods_Base):
         clusterfolder = '/data/visitors/' + self.directory.replace(os.sep, '/').replace('//', '/')[2::]
         client = SSHClient()
         client.load_system_host_keys()
-        client.connect('clu0-fe-1.maxiv.lu.se', username='balder-user', password='BeamPass!')
+        try:
+            client.connect('clu0-fe-1.maxiv.lu.se', username='balder-user', password='BeamPass!')
+        except:
+            print('check network and password')
+        else:
+            cmd = "sbatch --export=ALL,argv=\'%s %s %s\' " \
+                  "/mxn/home/balder-user/BalderProcessingScripts/balder-xrd-processing/submit_stream_MR.sh" % (
+                      clusterfolder, self.fileshort[0:-6], ponifile_short)
 
-        cmd = "sbatch --export=ALL,argv=\'%s %s %s\' " \
-              "/mxn/home/balder-user/BalderProcessingScripts/balder-xrd-processing/submit_stream_MR.sh" % (
-                  clusterfolder, self.fileshort[0:-6], ponifile_short)
+            client.exec_command('mv ./*.log ./azint_logs')
+            stdin, stdout, stderr = client.exec_command(cmd)
+            print(stdout.readlines())
+            client.close()
 
-        client.exec_command('mv ./*.log ./azint_logs')
-        stdin, stdout, stderr = client.exec_command(cmd)
-        print(stdout.readlines())
-        client.close()
+            # add status check
+            t0 = time.time()
+            t = 0
+            while t < 1000:
+                if os.path.exists(clusterfile):
+                    print('Integration completed by HPC cluster in ', int(t), ' seconds.')
+                    break
+                time.sleep(1)
+                t = time.time() - t0
 
-        # add status check
-        t0 = time.time()
-        t = 0
-        while t < 1000:
-            if os.path.exists(clusterfile):
-                print('Integration completed by HPC cluster in ', int(t), ' seconds.')
-                break
-            time.sleep(1)
-            t = time.time() - t0
+            # clusterfile_linux = '/data/visitors/' + clusterfile.replace(os.sep, '/').replace('//', '/')[2::]
+            # client.exec_command('chmod g+w {}'.format(clusterfile_linux))
 
-        # clusterfile_linux = '/data/visitors/' + clusterfile.replace(os.sep, '/').replace('//', '/')[2::]
-        # client.exec_command('chmod g+w {}'.format(clusterfile_linux))
-
-        print(stderr.readlines())
+            print(stderr.readlines())
 
     def read_intg(self): # it's raw, not normal here, can make a choice in the future
-        intfile = h5py.File(self.exportfile, 'r')
-        if self.parameters['integrated']['normalization'].choice == 'not normalized':
-            intdata_all = intfile['rawresult']
-        else:
-            intdata_all = intfile['normresult']
+        try:
+            with h5py.File(self.exportfile, 'r') as f:
+                if self.parameters['integrated']['normalization'].choice == 'not normalized':
+                    intdata_all = f['rawresult']
+                else:
+                    intdata_all = f['normresult']
 
-        self.intdata_ts = np.zeros((intdata_all.shape[0], intdata_all.shape[1]), dtype='float32')
-        intdata_all.read_direct(self.intdata_ts)
-        self.intqaxis = np.array(list(intfile['info/q(Angstrom)']))
-        intfile.close()
+                self.intdata_ts = np.zeros((intdata_all.shape[0], intdata_all.shape[1]), dtype='float32')
+                intdata_all.read_direct(self.intdata_ts)
+                self.intqaxis = np.array(list(f['info/q(Angstrom)']))
+                if 'y min' in list(f.keys()):
+                    self.y_range = [f['y min'], f['y max']]
+
+        except:
+            print('do integration first')
 
     def output_intg(self, q, result, norm_result, wavelength, interval):
         if not os.path.isdir(self.exportdir): os.mkdir(self.exportdir)
@@ -1839,6 +1929,8 @@ class XRD(Methods_Base):
             intdata_ts[isnan(intdata_ts)] = 0 # surprise!
             self.color_bar_ts = pg.ColorBarItem(values=(0, intdata_ts.max()), cmap=color_map)
             self.color_bar_ts.setImageItem(self.img_ts, pw)
+            if hasattr(self, 'y_range'):
+                pw.setYRange(self.y_range[0], self.y_range[1])
 
         if hasattr(self, 'refinegpx'):
             cell_para = []
@@ -1979,19 +2071,20 @@ class XRD(Methods_Base):
                           wlen = int(self.parameters['integrated']['window length'].setvalue))
 
     def read_data_time(self): # for new data collection
-        if self.timediff[0] < 0:
-            if self.checksdict['raw'].isChecked():
-                self.read_data_index(0)
+        if hasattr(self, 'intdata_ts'):
+            if self.timediff[0] < 0:
+                if self.checksdict['raw'].isChecked():
+                    self.read_data_index(0)
 
-            if self.checksdict['integrated'].isChecked() or self.checksdict['time series'].isChecked():
-                self.intdata = self.intdata_ts[0]
+                if self.checksdict['integrated'].isChecked() or self.checksdict['time series'].isChecked():
+                    self.intdata = self.intdata_ts[0]
 
-        else: # there could be a few xrd data within one index
-            if self.checksdict['raw'].isChecked():
-                self.read_data_index(self.index)
+            else: # there could be a few xrd data within one index
+                if self.checksdict['raw'].isChecked():
+                    self.read_data_index(self.index)
 
-            if self.checksdict['integrated'].isChecked() or self.checksdict['time series'].isChecked():
-                self.intdata = self.intdata_ts[self.index]
+                if self.checksdict['integrated'].isChecked() or self.checksdict['time series'].isChecked():
+                    self.intdata = self.intdata_ts[self.index]
 
         # if self.refinedata: # if not [], read according to para value, not global slider value
         #     self.refine_df = pd.read_csv(self.refinedata[self.parameters['refinement single']['data number'].setvalue],
@@ -2623,7 +2716,7 @@ class XRD_BATTERY_1(XRD):
                             time.mktime(datetime.strptime(self.file[key + '/end_time'][()].decode(),
                                                           '%Y-%m-%dT%H:%M:%S.%f').timetuple())])
                     else:  # error proof, and only chance of effective error proof: filter the bad entries when setslider
-                        del self.filekeys[self.filekeys.index(key)]
+                        del self.filekeys[self.filekeys.index(key)] # really ???
 
                 self.entrytimesec = np.array(self.entrytimesec)
 
@@ -2634,53 +2727,61 @@ class Optic(Methods_Base):
         super(Optic, self).__init__()
         self.directory = path_name_widget['directory'].text()
         self.fileshort = path_name_widget['raw file'].text()
-        self.exportdir = os.path.join(self.directory, 'process', self.fileshort)
+        self.exportdir = os.path.join(self.directory, 'process', self.fileshort + '_Optic_data')
         if not os.path.isdir(self.exportdir): os.mkdir(self.exportdir)
-        filename = os.path.join(self.directory, 'raw', self.fileshort + '.qvd')
-        # qvt: double (time in ms), int16 (time span/data), double (dummy)
-        timename = os.path.join(self.directory, 'raw', self.fileshort + '.qvt')
-        timefile = os.path.join(self.directory, 'raw', self.fileshort + '_info.txt')
 
-        if int(self.directory.split(os.sep)[1][0:4]) > 2021: # new spectrometer
+        if int(self.directory.split('202')[1][0]) > 1: # new spectrometer after 2021 (202 1)
             self.channelnum = 2068
-            ch = np.arange(0, self.channelnum)
-            A = 194, 85605
-            B = 0, 5487633
-            C = -5, 854113E-05
-            D = 3, 1954566E-09
-            self.channels = A + ch * B + ch ** 2 * C + ch ** 3 * D # calibrated numbers
+            # ch = np.arange(0, self.channelnum)
+            # A = 194.85605
+            # B = 0.5487633
+            # C = -5.854113E-05
+            # D = 3.1954566E-09
+            # self.channels = A + ch * B + ch ** 2 * C + ch ** 3 * D # calibrated numbers
         else: # old spectrometer
             self.channelnum = 2048
-            self.channels = np.linspace(200, 1100, self.channelnum) # an estimation
 
-        if os.path.isfile(timefile): # new time stamp since 20220660
-            with open(timefile, 'r') as f: lines = f.readlines()
-            self.end_time = time.mktime(datetime.strptime(lines[1].split('stamp: ')[1][:-1], '%Y-%m-%d %H:%M:%S').timetuple())
-        else:
-            self.end_time = os.path.getmtime(os.path.join(self.directory, 'raw', self.fileshort + '.qvt'))  # in seconds
+        self.channels = np.linspace(200, 1100, self.channelnum) # an estimation
 
-        self.data = self.read_qvd(filename)
-        self.datatime = self.read_qvt(timename)
         self.entrytimesec = []
         self.method_name = []
 
-    def time_range(self, winobj):
-        for key in winobj.path_name_widget:  # to distinguish xrd_1, xrd_2
-            if self.fileshort == winobj.path_name_widget[key]['raw file'].text():
-                self.method_name = key
+    def read_data_time(self, datafile):
+        filename = os.path.join(self.directory, 'raw', self.fileshort + '.qvd')
+        timename = os.path.join(self.directory, 'raw', self.fileshort + '.qvt')
+        if os.path.isfile(filename):
+            data = self.read_qvd(filename)
+            datatime = self.read_qvt(timename)
+            self.data = (data.T / datatime[:,1]).T
+            with h5py.File(datafile, 'w') as f:
+                f.create_dataset('raw', data=np.array(self.data))
+                f.create_dataset('wave length(nm)', data=self.channels)
 
-        if self.entrytimesec == []:  # start, end time in seconds
-            start_time = self.end_time - self.datatime[-1, 0] / 1000 - self.datatime[-1, 1] / 1000  # original in milisecond
+            if self.entrytimesec == []:  # start, end time in seconds
+                timefile = os.path.join(self.directory, 'raw', self.fileshort + '_info.txt')
+                if os.path.isfile(timefile):  # new time stamp since 20220660
+                    with open(timefile, 'r') as f:
+                        lines = f.readlines()
+                    start_time = time.mktime(
+                        datetime.strptime(lines[1].split('stamp: ')[1][:-1], '%Y-%m-%d %H:%M:%S').timetuple())
+                else:
+                    end_time = os.path.getmtime(
+                        os.path.join(self.directory, 'raw', self.fileshort + '.qvt'))  # estimation, in seconds
+                    start_time = end_time - datatime[-1, 0] / 1000 - datatime[-1, 1] / 1000  # original in milisecond
 
-            for index in range(self.data.shape[0]):
-                self.entrytimesec.append(start_time + self.datatime[index, 0] / 1000 + [0, self.datatime[index, 1] / 1000])
+                self.entrytimesec = start_time + np.stack((datatime[:, 0], datatime[:, 0] + datatime[:, 1])).T / 1000
+                # for index in range(self.data.shape[0]):
+                #     self.entrytimesec.append(start_time + datatime[index, 0] / 1000 + [0, datatime[index, 1] / 1000])
 
-            self.entrytimesec = np.array(self.entrytimesec) # , dtype=int)
-
-        # return [int(self.entrytimesec[0, 0]), int(self.entrytimesec[-1, 1])]
-        return [self.entrytimesec[0, 0], self.entrytimesec[-1, 1]]
+                self.entrytimesec = np.array(self.entrytimesec)  # , dtype=int)
+                with h5py.File(datafile, 'a') as f:
+                    f.create_dataset('time in seconds', data=self.entrytimesec)
+                    # here it will automatically choose a dtype which is float64!!! so critical!!!
+        else:
+            print('double check with your file name!')
 
     def read_qvt(self, qvtfilename):
+        # qvt: double (time in ms), int16 (time span/data), double (dummy)
         struct_fmt = '=dHd'  # very important to get the format correct
         struct_len = struct.calcsize(struct_fmt)
         struct_unpack = struct.Struct(struct_fmt).unpack_from
@@ -2707,6 +2808,13 @@ class Optic(Methods_Base):
                 timedata.append(s)
         return np.array(timedata)
 
+    def plot_from_prep(self, winobj):
+        winobj.setslider()
+        if self.align_data and not self.aligned: # there is a little problem here: what if you want to align it again?
+            time_diff = self.entrytimesec[self.align_data, 0] - self.to_time
+            self.entrytimesec = self.entrytimesec - time_diff
+            self.aligned = True
+
     def plot_optic_2D(self, step, data_norm, pw):
         xticklabels = []
         for tickvalue in np.arange(self.channels[0], self.channels[-1],step):
@@ -2727,22 +2835,34 @@ class Optic(Methods_Base):
             if type(item).__name__ == 'ColorBarItem':
                 item.close()
 
-        for t in range(data_norm.shape[0]):
-            # if len(np.where(data_norm[t,:] == max(data_norm[t,:]))[0]) > \
-            #     int(self.linedit['time series']['filter criterion']) and t > 0:
-            if max(data_norm[t,:]) > np.log10(float(self.linedit['time series']['filter criterion'])) and t > 0:
-                data_norm[t,:] = (data_norm[t - 1,:] + data_norm[t + 1, :]) / 2 # linear interpolation between adjacent data
+        # for t in range(data_norm.shape[0] - 1): only works for bad data!!!
+        #     # if len(np.where(data_norm[t,:] == max(data_norm[t,:]))[0]) > \
+        #     #     int(self.linedit['time series']['filter criterion']) and t > 0:
+        #     if max(data_norm[t,:]) > np.log10(float(self.linedit['time series']['filter criterion'])) and t > 0 \
+        #             and t < data_norm.shape[0]:
+        #         data_norm[t,:] = (data_norm[t - 1,:] + data_norm[t + 1, :]) / 2 # linear interpolation between adjacent data
 
-        self.img_ts = pg.ImageItem(image=data_norm.transpose()) # need log here?
-        self.img_ts.setZValue(-100)  # as long as less than 0
-        pw.addItem(self.img_ts)
+        img_ts = pg.ImageItem(image=data_norm.transpose()) # need log here?
+        img_ts.setZValue(-100)  # as long as less than 0
+        pw.addItem(img_ts)
         color_map = pg.colormap.get('CET-R4')
         # data_norm[isnan(data_norm)] = 0
         # data_norm = ma.array(data_norm, mask=np.isinf(data_norm))
-        mode = 'time series'
-        self.color_bar_ts = pg.ColorBarItem(values=(float(self.linedit[mode]['z min']),
-                                                    float(self.linedit[mode]['z max'])), cmap=color_map)
-        self.color_bar_ts.setImageItem(self.img_ts, pw)
+        # mode = 'time series'
+        # self.color_bar_ts = pg.ColorBarItem(values=(float(self.linedit[mode]['z min']),
+        #                                             float(self.linedit[mode]['z max'])), cmap=color_map)
+        data_norm[isnan(data_norm)] = 0
+        inf_ele = np.where(np.isfinite(data_norm) == False)
+        for k in range(len(inf_ele[0])):
+            data_norm[inf_ele[0][k],inf_ele[1][k]] = 0
+
+        # limit the range to xas/xrd for more colorful
+        view_range = np.s_[max(0,int(pw.viewRange()[1][0])):
+                           min(data_norm.shape[0] - 1, int(pw.viewRange()[1][1])),:]
+        self.color_bar_ts = pg.ColorBarItem(values=(data_norm[view_range].min(), data_norm[view_range].max()),cmap=color_map)
+        self.color_bar_ts.setImageItem(img_ts, pw)
+        if hasattr(self, 'y_range'):
+            pw.setYRange(self.y_range[0], self.y_range[1])
 
 class PL(Optic):
     def __init__(self, path_name_widget):
@@ -2757,21 +2877,67 @@ class PL(Optic):
                                   'left': 'Data number'},
                           'fit-T': {'bottom':'Data number',
                                      'left':''}}
+        self.actions = {'time series': {'update range': self.update_range,
+                                        'Export reference (Ctrl+X)': self.export_norm}}
+        self.align_data = int(path_name_widget['align data number'].text())
+        self.to_time = time.mktime(
+            datetime.strptime(path_name_widget['to time'].text(), '%Y-%m-%dT%H:%M:%S').timetuple())  # in second
+        self.aligned = False
+        self.linedit = {'time series': {'z min': '-2',
+                                        'z max': '0.1',
+                                        'y min':'0',
+                                        'y max':'1000',}}
+                                        # 'filter criterion': '2'}}  # larger than 2 after referenced.
+
         self.ini_data_curve_color()  # this has to be at the end line of each method after a series of other attributes
 
-    def plot_from_prep(self, winobj):
-        pass
-        # tempfile = os.path.join(self.directory, 'process', self.fileshort + '_PL_data.txt')
-        # if os.path.isfile(tempfile):
-        #     np.savetxt(tempfile, self.data)
-        # self.plot_from_load(winobj)
+    def export_norm(self, winobj):
+        # must guarantee reference is clicked...
+        with h5py.File(os.path.join(self.exportdir, self.fileshort + '_pl_data.h5'), 'a') as f:
+            if self.aligned:
+                del f['time in seconds']
+                f.create_dataset('time in seconds', data=self.entrytimesec, dtype='float32')
 
     def plot_from_load(self, winobj):
         winobj.setslider()
         self.curvedict['time series']['pointer'].setChecked(True)
         pw = winobj.gdockdict[self.method_name].tabdict['time series'].tabplot
+        for key in winobj.methodict:  # for xas-xrd-pl correlation
+            if key[0:3] in ['xas', 'xrd'] and hasattr(winobj.methodict[key], 'entrytimesec'):
+                try:
+                    y_low = np.where(self.entrytimesec[:, 0] > winobj.methodict[key].entrytimesec[0, 0])[0][0]
+                except:
+                    y_low = 0
+                try:
+                    y_up = np.where(self.entrytimesec[:, 1] > winobj.methodict[key].entrytimesec[-1, -1])[0][0]
+                except:
+                    y_up = self.entrytimesec.shape[0] - 1
+
+                pw.setYRange(y_low, y_up)
+                continue
+
         if self.checksdict['time series'].isChecked():
             self.plot_optic_2D(100, self.data, pw)
+
+    def time_range(self, winobj):
+        for key in winobj.path_name_widget:  # to distinguish _1, _2, ...
+            if self.fileshort == winobj.path_name_widget[key]['raw file'].text():
+                self.method_name = key
+
+        self.exportfile = os.path.join(self.exportdir, self.fileshort + '_pl_data.h5')
+        if os.path.isfile(self.exportfile):
+            with h5py.File(self.exportfile, 'r') as f:
+                self.data = np.zeros((f['raw'].shape[0], f['raw'].shape[1]), dtype='float32')
+                f['raw'].read_direct(self.data)
+                self.entrytimesec = np.zeros((f['time in seconds'].shape[0], 2), dtype='float32')
+                f['time in seconds'].read_direct(self.entrytimesec)
+                if 'y min' in list(f.keys()):
+                    self.y_range = [f['y min'], f['y max']]
+
+        else:
+            self.read_data_time(self.exportfile)
+
+        return [self.entrytimesec[0, 0], self.entrytimesec[-1, 1]]
 
     def data_process(self, para_update):
         self.dynamictitle = 'data' + str(self.index + 1) + '\t start:' + self.startime + '\t end:' + self.endtime
@@ -2797,8 +2963,7 @@ class Refl(Optic):
                                           'left': 'Data number'},
                           'fit-T': {'bottom': 'Data number',
                                      'left': ''}}
-        self.actions = {'time series': {'Export time series (Ctrl+X)': self.export_ts}}
-
+        self.actions = {'raw': {'Export reference (Ctrl+X)': self.export_norm}}
         self.align_data = int(path_name_widget['align data number'].text())
         self.to_time = time.mktime(datetime.strptime(path_name_widget['to time'].text(), '%Y-%m-%dT%H:%M:%S').timetuple()) # in second
         self.aligned = False
@@ -2809,36 +2974,82 @@ class Refl(Optic):
         # self.parameters = {'time series': {'normalize': Paraclass('original', ['original', 'normalized'])}}
         self.linedit = {'time series':{'z min':'-2',
                                        'z max':'0.1',
-                                       'filter criterion':'2'}} # larger than 2 after referenced.
+                                       'y min':'0',
+                                       'y max':'1000'}} # ,
+                                       # 'filter criterion':'2'}} # larger than 2 after referenced.
 
-    def export_ts(self, winobj):
+        self.actions = {'time series':{'update range': self.update_range,}}
+                                       # 'update z': self.update_z}}
+
+    # def updata_z(self, winobj): # this function is currently redundant as plot_optic_2D does not involve z values any more
+    #     pw = winobj.gdockdict[self.method_name].tabdict['time series'].tabplot
+    #     if self.checksdict['raw'].isChecked() and self.curvedict['raw']['reference'].isChecked():
+    #         self.plot_optic_2D(100, np.log10(self.data / self.refcandidate), pw)
+    #     else:
+    #         self.plot_optic_2D(100, np.log10(self.data), pw)  # / self.refcandidate
+
+    def export_norm(self, winobj):
         # must guarantee reference is clicked...
-        resultfile = h5py.File(os.path.join(self.exportdir, 'refl_norm_time_series.h5'), 'w')
-        if len(self.refcandidate) > 0:
-            resultfile.create_dataset('refl_norm', data=np.array(self.data / self.refcandidate))
-        resultfile.create_dataset('Wave length/nm', data=self.channels)
-        resultfile.close()
+        with h5py.File(os.path.join(self.exportdir, self.fileshort + '_refl_data.h5'), 'a') as f:
+            if len(self.refcandidate) > 0:
+                if 'refl_ref' in list(f.keys()): del f['refl_ref']
+                f.create_dataset('refl_ref', data=np.array(self.refcandidate), dtype='float32')
 
-    def plot_from_prep(self, winobj):
-        winobj.setslider()
-        if self.align_data and not self.aligned: # there is a little problem here: what if you want to align it again?
-            time_diff = self.entrytimesec[self.align_data, 0] - self.to_time
-            self.entrytimesec = self.entrytimesec - time_diff
-            self.align_data = True
-        # tempfile = os.path.join(self.directory, 'process', self.fileshort + '_Refl_data.txt')
-        # if os.path.isfile(tempfile):
-        #     np.savetxt(tempfile, self.data)
-        # self.plot_from_load(winobj)
+            if self.aligned:
+                del f['time in seconds']
+                f.create_dataset('time in seconds', self.entrytimesec)
 
     def plot_from_load(self, winobj): # this needs pre-select a good reference
         winobj.setslider()
         self.curvedict['time series']['pointer'].setChecked(True)
         pw = winobj.gdockdict[self.method_name].tabdict['time series'].tabplot
+        for key in winobj.methodict:  # for xas-xrd-refl correlation
+            if key[0:3] in ['xas', 'xrd'] and hasattr(winobj.methodict[key], 'entrytimesec'):
+                try:
+                    y_low = np.where(self.entrytimesec[:,0] > winobj.methodict[key].entrytimesec[0,0])[0][0]
+                except:
+                    y_low = 0
+                try:
+                    y_up = np.where(self.entrytimesec[:, 1] > winobj.methodict[key].entrytimesec[-1,-1])[0][0]
+                except:
+                    y_up = self.entrytimesec.shape[0]
+
+                pw.setYRange(y_low, y_up)
+                continue
+
         if self.checksdict['time series'].isChecked(): # and 'reference' in self.curve_timelist[0]['raw']:
             if self.checksdict['raw'].isChecked() and self.curvedict['raw']['reference'].isChecked():
                 self.plot_optic_2D(100, np.log10(self.data / self.refcandidate), pw)
             else:
                 self.plot_optic_2D(100, np.log10(self.data), pw) # / self.refcandidate
+
+    def time_range(self, winobj):
+        for key in winobj.path_name_widget:  # to distinguish _1, _2, ...
+            if self.fileshort == winobj.path_name_widget[key]['raw file'].text():
+                self.method_name = key
+
+        self.exportfile = os.path.join(self.exportdir, self.fileshort + '_refl_data.h5')
+        if os.path.isfile(self.exportfile):
+            with h5py.File(self.exportfile, 'r') as f:
+                self.data = np.zeros((f['raw'].shape[0], f['raw'].shape[1]), dtype='float32')
+                f['raw'].read_direct(self.data)
+                self.entrytimesec = np.zeros((f['time in seconds'].shape[0], f['time in seconds'].shape[1]), dtype='float64')
+                # how important is this dtype!!! as the abs time in seconds is a large number, you need to choose 64!!! so critical!!!
+                f['time in seconds'].read_direct(self.entrytimesec)
+                if 'y min' in list(f.keys()):
+                    self.y_range = [f['y min'], f['y max']]
+
+                for key in list(f.keys()):
+                    if key == 'refl_ref':
+                        self.checksdict['raw'].setChecked(True)
+                        self.curvedict['raw']['reference'].setChecked(True)
+                        self.refcandidate = np.zeros(f['refl_ref'].shape[0], dtype='float64')
+                        f['refl_ref'].read_direct(self.refcandidate)
+
+        else:
+            self.read_data_time(self.exportfile)
+
+        return [self.entrytimesec[0, 0], self.entrytimesec[-1, 1]]
 
     def data_process(self, para_update):
         self.dynamictitle = 'data' + str(self.index + 1) + '\t start:' + self.startime + '\t end:' + self.endtime
