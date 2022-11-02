@@ -195,23 +195,25 @@ class ShowData(QMainWindow):
                      ['Coat7_12S_FAPI_Br06M_Cl01M_heat_1',
                       'Coat7_12S_FAPI_Br06M_Cl01M_heat_1',
                       'Coat7_12S_FAPI_Br06M_Cl01M_heat_52']]
-        # xrd only
-        name_ls01 = [['MACl1M_DMF_airblade_QXRD_coat006'],
-                     ['MACl1M_DMF_airblade_QXRD_coat006a'],
-                     ['MACl1M_DMF_airblade_QXRD_coat007'],
-                     ['MACl1M_DMF_airblade_QXRD_coat007a'],
-                     ['MAPbBrI_DMSO_2ME_coat010'], # be careful with this one, no xas!
-                     ['MAPbBrI_DMSO_2ME_coat011'],
-                     ['MAPbBrI_DMSO_2ME_coat012'],
-                     ['MAPbBrI_DMSO_2ME_coat016'],
-                     ['MAPbBrI_DMSO_2ME_coat018'],
-                     ['MAFAPbI_DMF_coat020']]
+        # xrd only, name and time
+        name_ls01 = [['MACl1M_DMF_airblade_QXRD_coat006_eiger',],
+                     ['MACl1M_DMF_airblade_QXRD_coat006a_eiger'],
+                     ['MACl1M_DMF_airblade_QXRD_coat007_eiger'],
+                     # ['MAPbBrI_DMSO_2ME_coat010_eiger'], # be careful with this one, no xas!
+                     ['MAPbBrI_DMSO_2ME_coat011_eiger'],
+                     ['MAPbBrI_DMSO_2ME_coat012_eiger'],
+                     ['MAPbBrI_DMSO_2ME_coat016_eiger'],
+                     # ['MAPbBrI_DMSO_2ME_coat018_eiger'], # no xas
+                     ['MAFAPbI_DMF_coat020_eiger']]
+
+        time_intevals = [10,10,10,100,100,10,10] # mapping above
 
         # one xas, two xrd
         name_ls03 = [['LaB6'],
                      ['MACl1M_DMF_slow_dry_coat004d'],
                      ['MACl1M_DMF_slow_dry_coat004fb'],
                      ['MACl1M_DMF_slow_dry_coat005'],
+                     ['MACl1M_DMF_airblade_QXRD_coat007a'],
                      ['MAFAPbI_DMF_coat021'],
                      ['MAFAPbI_DMF_coat022g'],
                      ['MACl3M_coat023a']]
@@ -223,7 +225,7 @@ class ShowData(QMainWindow):
         # two xas, two xrd
         name_ls04 = [['MAPbBrI_DMSO_2ME_coat08b'],
                      ['MAPbBrI_DMSO_2ME_coat009b'],
-                     ['MAPbBrI_DMSO_2ME_coat013'],
+                     # ['MAPbBrI_DMSO_2ME_coat013'], # no xas
                      ['MAPbBrI_DMSO_2ME_coat014b'],
                      ['MAPbBrI_DMSO_2ME_coat015b'],
                      ['MAPbBrI_DMSO_2ME_coat017a'],
@@ -254,63 +256,63 @@ class ShowData(QMainWindow):
                           'Ref_heat_150_again_Refl']
 
         name_list_ref1 = ['MACl1M_DMF_airblade_QXRD_coat006',
-                         'MACl1M_DMF_airblade_QXRD_coat006a',
-                         'MACl1M_DMF_airblade_QXRD_coat007',
-                         'MACl1M_DMF_airblade_QXRD_coat007a',
-                         'MAPbBrI_DMSO_2ME_coat10',
-                         'MAPbBrI_DMSO_2ME_coat11',
-                         'MAPbBrI_DMSO_2ME_coat12',
-                         'MAPbBrI_DMSO_2ME_coat16',
-                         'MAPbBrI_DMSO_2ME_coat18',
-                         'MAFAPbI_DME_coat20']
+                          'MACl1M_DMF_airblade_QXRD_coat006a',
+                          'MACl1M_DMF_airblade_QXRD_coat007',
+                          # 'MAPbI_DMSO_2ME_coat10', # no xas
+                          'MAPbI_DMSO_2ME_coat11',
+                          'MAPbI_DMSO_2ME_coat12',
+                          'MAPbI_DMSO_2ME_coat16',
+                          # 'MAPbI_DMSO_2ME_coat18', # no xas
+                          'MAFAPbI_DME_coat20']
 
         name_list_ref3 = ['MACl1M_DMF_slow_dry_coat004d',
-                         'MACl1M_DMF_slow_dry_coat004f',
-                         'MACl1M_DMF_slow_dry_coat005',
-                         'MAFAPbI_DME_coat21',
-                         'MAFAPbI_DME_coat22']
+                          'MACl1M_DMF_slow_dry_coat004f',
+                          'MACl1M_DMF_slow_dry_coat005',
+                          'MAFAPbI_DME_coat21',
+                          'MAFAPbI_DME_coat22']
 
-        name_list_ref4 = ['MAPbBrI_DMSO_2ME_coat8',
-                         'MAPbBrI_DMSO_2ME_coat9b',
-                         'MAPbBrI_DMSO_2ME_coat13',
-                         'MAPbBrI_DMSO_2ME_coat14',
-                         'MAPbBrI_DMSO_2ME_coat15',
-                         'MAPbBrI_DMSO_2ME_coat17',
-                         'MAPbBrI_DMSO_2ME_coat19']
+        name_list_ref4 = ['MAPbI_DMSO_2ME_coat8',
+                          'MAPbI_DMSO_2ME_coat9b',
+                          # 'MAPbI_DMSO_2ME_coat13',
+                          'MAPbI_DMSO_2ME_coat14',
+                          'MAPbI_DMSO_2ME_coat15',
+                          'MAPbI_DMSO_2ME_coat17',
+                          'MAPbI_DMSO_2ME_coat19']
 
         # name_list = name_ls01 # one xrd
         # name_list = name_ls02 # two xas, one xrd
-        # name_list = name_ls03 # one xas, two xrd
-        name_list = name_ls04 # two xas, two xrd
-        self.repeat = len(name_list)  # number of xas or xrd
+        name_list = name_ls03 # one xas, two xrd
+        # name_list = name_ls04 # two xas, two xrd
 
+        # name_list_refl = name_list_ref1
+        name_list_refl = name_list_ref3
+        # name_list_refl = name_list_ref4
+
+        self.repeat = len(name_list)  # number of xas or xrd
         # file_directory = r"Y:\20220720\2022042008"
         file_directory = r"W:balder\20220660\2022101308"
         # file_directory = r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform',
         poni_file1 = 'LaB6_12936p37eV_realCalib_sum.poni'
         poni_file2 = 'LaB6_13591p12eV_realCalib_sum.poni'
         file_apdx = '_resultCluster.h5'
-
-        # name_list_refl = name_list_ref3
-        name_list_refl = name_list_ref4
         refl_directory = r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform'  # file_directory
         # refl_directory = r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData"
 
         for k in range(len(name_list)):
             if len(name_list[k]) > 1:
-                if name_list[k][0] == name_list[k][1]:
+                if name_list[k][0] == name_list[k][1]: # two xas
                     self.path_name_dict['xas_' + str(k + 1) + '_1'] = {'directory': file_directory,
                                                                        'raw file': name_list[k][0],
-                                                                       'energy range (eV)': '12395-13435'}
+                                                                       'energy range (eV)': '12935-13435'}
                     self.path_name_dict['xas_' + str(k + 1) + '_2'] = {'directory': file_directory,
                                                                        'raw file': name_list[k][1],
                                                                        'energy range (eV)': '13435-13935'}
-                else:
+                else: # one xas
                     self.path_name_dict['xas_' + str(k + 1)] = {'directory': file_directory,
                                                                 'raw file': name_list[k][0],
                                                                 'energy range (eV)': '12935-13935'}
 
-                if name_list[k][-1] == name_list[k][-2]:
+                if name_list[k][-1] == name_list[k][-2]: # two xrd
                     self.path_name_dict['xrd_' + str(k + 1) + '_1'] = {'directory': file_directory,
                                                                        'raw file': name_list[k][-2], # '_data_000001',
                                                                        'integration file appendix': file_apdx,
@@ -319,7 +321,7 @@ class ShowData(QMainWindow):
                                                                        'raw file': name_list[k][-1],
                                                                        'integration file appendix': file_apdx,
                                                                        'PONI file': poni_file2}
-                else:
+                else: # one xrd
                     self.path_name_dict['xrd_' + str(k + 1)] = {'directory': file_directory,
                                                                 'raw file': name_list[k][-1],
                                                                 'integration file appendix': file_apdx,
@@ -330,11 +332,12 @@ class ShowData(QMainWindow):
                                                                 # 'data files': 'data_result*20phases',
                                                                 # 'refinement file': 'refine_coat7_rt_all.gpx'}
             
-            else:
+            else: # only one xrd
                 self.path_name_dict['xrd_' + str(k + 1)] = {'directory': file_directory,
                                                             'raw file': name_list[k][-1],
                                                             'integration file appendix': file_apdx,
-                                                            'PONI file': poni_file1}
+                                                            'PONI file': poni_file1,
+                                                            'time interval(ms)':str(time_intevals[k])}
 
         for index in range(len(name_list_refl)):
             self.path_name_dict['refl_' + str(index + 1)] = {'directory': refl_directory,
@@ -466,7 +469,10 @@ class ShowData(QMainWindow):
     def setslider(self):
         timerange = []
         for key in self.methodict:
-            timerange.append(self.methodict[key].time_range(self))
+            try:
+                timerange.append(self.methodict[key].time_range(self))
+            except:
+                print('check your file name, or reselect your import mode, or your file is not complete or if you are unlucky')
 
         if timerange:
             self.timerangearray = np.array(timerange) * 1000 # in milliseconds ! search for [:-3]
@@ -627,7 +633,11 @@ class ShowData(QMainWindow):
         self.sliderlabel.setText(slidertime)
         # maybe put a legend for each curve displayed, just show the slider time
         for key in self.gdockdict:  # xas, xrd,...
-            self.methodict[key].data_update(slidervalue)
+            try:
+                self.methodict[key].data_update(slidervalue)
+            except:
+                print('maybe you missed some process before this step?')
+
             if self.methodict[key].update == True:
                 self.update_curves(key)
 
@@ -654,6 +664,9 @@ class ShowData(QMainWindow):
             if parawidget.objectName() == 'scale':
                 self.methodict[tooltabname].plot_from_load(self)
 
+            elif parawidget.objectName() == 'normalization':
+                self.methodict[tooltabname].plot_from_load(self)
+
             elif parawidget.objectName() in ['gap y tol.', 'gap x tol.', 'min time span']:
                 self.methodict[tooltabname].catalog_peaks(self)
 
@@ -676,9 +689,9 @@ class ShowData(QMainWindow):
                 self.methodict[tooltabname].show_phase(self)
 
         else:
-            if tooltabname[0:3] == 'xas' and (toolitemname in ['normalizing', 'normalized']) and \
-                    parawidget.objectName()[0:8] == 'Savitzky':
-                self.methodict[tooltabname].filtered = True
+            # if tooltabname[0:3] == 'xas' and (toolitemname in ['normalizing', 'normalized']) and \
+            #         parawidget.objectName()[0:8] == 'Savitzky':
+            #     self.methodict[tooltabname].filtered = True
 
             self.methodict[tooltabname].data_process(True) # True means the parameters have changed
             self.update_curves(tooltabname)

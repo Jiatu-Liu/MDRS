@@ -25,6 +25,7 @@ import larch
 from larch.xafs import *
 from larch import *
 from larch.fitting import *
+import larch.math
 
 # from azint import AzimuthalIntegrator
 
@@ -108,7 +109,7 @@ class DockGraph():
         index = winobj.controltabs.indexOf(self.tooltab)
         winobj.controltabs.removeTab(index)
 
-class TabGraph_index(): # for xrd analysis
+class TabGraph_index(): # for xrd index
     def __init__(self, name):
         self.label = name # e.g. phase 1, phase 2,...
 
@@ -271,24 +272,29 @@ class TabGraph():
                     methodobj.actwidgets[tabname][key].setShortcut(key[-7:-1])
                 # tempfunc = getattr(methodobj, methodobj.actions[tabname][key])
 
-                if key == 'set range': # for update the range of 2D plot
+                if key == 'update range': # for update the range of 2D plot
                     methodobj.actwidgets[tabname][key].clicked.connect(
-                        lambda: methodobj.actions[tabname][key](winobj, methodobj, tabname))  # e,g, MainWin, XAS, munorm-T
+                        lambda state, t = tabname, k = key: methodobj.actions[t][k](winobj, methodobj, tabname))  # e,g, MainWin, XAS, munorm-T
+                    # what is this state!!!???
+                    # The QPushButton.clicked signal emits an argument that indicates the state of the button.
+                    # When you connect to your lambda slot, the optional argument you assign to is being overwritten by the state of the button.
+                    # This way the button state is ignored and the correct value is passed to your method.
+
                 else:
                     methodobj.actwidgets[tabname][key].clicked.connect(
-                        lambda : methodobj.actions[tabname][key](winobj))  # shock !!!
+                        lambda state, t = tabname, k = key: methodobj.actions[t][k](winobj))  # shock !!!
                         # lambda state, k = key: methodobj.actions[tabname][k](winobj)) # shock !!!
                 self.itemlayout.addWidget(methodobj.actwidgets[tabname][key])
 
         # lineEdit
         if tabname in methodobj.linedit:
             methodobj.linewidgets[tabname] = {}
-            self.range_select = QFormLayout()
+            range_select = QFormLayout()
             for key in methodobj.linedit[tabname]:
                 methodobj.linewidgets[tabname][key] = QLineEdit(methodobj.linedit[tabname][key])
-                self.range_select.addRow(key, methodobj.linewidgets[tabname][key])
+                range_select.addRow(key, methodobj.linewidgets[tabname][key])
                 
-            self.itemlayout.addLayout(self.range_select)    
+            self.itemlayout.addLayout(range_select)
 
         self.curvespacer = QSpacerItem(10, 10, QSizePolicy.Minimum, QSizePolicy.Expanding)
         self.itemlayout.addItem(self.curvespacer)
@@ -329,12 +335,14 @@ class Methods_Base():
 
     def update_range(self, winobj, methodobj, tabname):
         try:
-            time_start = methodobj.entrytimesec[int(methodobj.linewidgets[tabname]['y min'].text()),0]
-            time_end = methodobj.entrytimesec[int(methodobj.linewidgets[tabname]['y max'].text()), 1]
+            # print('done')
+            time_start = methodobj.entrytimesec[max(0,int(methodobj.linewidgets[tabname]['y min'].text())),0]
+            time_end = methodobj.entrytimesec[min(methodobj.entrytimesec.shape[0] - 1,
+                                                  int(methodobj.linewidgets[tabname]['y max'].text())), 1]
         except:
-            print('check your input values')
+            print('check your input y values')
         else:
-            for key in winobj.methodict: # xas, xrd, refl
+            for key in winobj.methodict: # xas_, xrd_, refl_
                 for sub_key in winobj.methodict[key].checksdict: # norm-T, chi-T, ...
                     if (sub_key[-2:] == '-T' or sub_key == 'time series') and winobj.methodict[key].checksdict[sub_key].isChecked():
                         pw = winobj.gdockdict[key].tabdict[sub_key].tabplot
@@ -352,19 +360,24 @@ class Methods_Base():
                             winobj.methodict[key].linewidgets[sub_key]['y max'].setText(str(y_max))
                             if os.path.isfile(winobj.methodict[key].exportfile):
                                 with h5py.File(winobj.methodict[key].exportfile, 'a') as f:
+                                    if 'y min' in list(f.keys()): del f['y min']
+                                    if 'y max' in list(f.keys()): del f['y max']
                                     f.create_dataset('y min', data=y_min, dtype='int')
                                     f.create_dataset('y max', data=y_max, dtype='int')
 
                         except:
-                            print('check your input values')
+                            print('check your input y values')
 
-                        for item in pw.childItems():
-                            if type(item).__name__ == 'ColorBarItem':
-                                item_colorbar = item
+            pw = winobj.gdockdict[methodobj.method_name].tabdict[tabname].tabplot
+            for item in pw.childItems():
+                if type(item).__name__ == 'ColorBarItem':
+                    item_colorbar = item
 
-                        if item_colorbar:
-                            item_colorbar.setLevels((winobj.methodict[key].linewidgets[sub_key]['z min'].text(),
-                                                     winobj.methodict[key].linewidgets[sub_key]['z max'].text()))
+            key = methodobj.method_name
+            sub_key = tabname
+            if item_colorbar and 'z min' in winobj.methodict[key].linewidgets[sub_key]:
+                item_colorbar.setLevels((float(winobj.methodict[key].linewidgets[sub_key]['z min'].text()),
+                                         float(winobj.methodict[key].linewidgets[sub_key]['z max'].text())))
 
 
     def plot_pointer(self, tabname, p_x, p_y, symbol, size):
@@ -383,6 +396,7 @@ class Methods_Base():
 
     def data_update(self, slidervalue):
         self.index_from_time(slidervalue) # update self.index
+
         if self.index == self.index_ref: # no need to update if the index does not change
             self.update = False
         else:
@@ -398,6 +412,7 @@ class Methods_Base():
                         self.data_timelist[0][key][subkey].pen = pg.mkPen(pg.intColor(nstep * self.huestep, self.maxhue),
                                                                       width=1.5)
                         nstep += 1
+
 
                 self.data_process(False)
 
@@ -472,8 +487,11 @@ class XAS(Methods_Base):
     def __init__(self, path_name_widget):
         # below are needed for each method (xas, xrd,...)
         super(XAS, self).__init__()
-        self.availablemethods = ['raw', 'normalizing', 'normalized', 'chi(k)', 'chi(r)', 'E0-t', 'Jump-t', 'mu_norm-T',
-                                 'chi(k)-T', 'chi(r)-T', 'LCA(internal) single', 'LCA(internal)-T']
+        self.availablemethods = ['raw', 'normalizing', 'normalized', 'chi(k)', 'chi(r)',
+                                 'E0-t', 'Jump-t',
+                                 'mu_norm-T', 'chi(k)-T',
+                                 # 'chi(r)-T',
+                                 'LCA(internal) single', 'LCA(internal)-t']
         self.availablecurves['raw'] = ['I0', 'I1']
         self.availablecurves['normalizing'] = ['mu','filter by time','filter by energy',
                                                'pre-edge', 'pre-edge points',
@@ -487,8 +505,9 @@ class XAS(Methods_Base):
         self.availablecurves['mu_norm-T'] = ['pointer']
         self.availablecurves['chi(k)-T'] = ['pointer']
         self.availablecurves['chi(r)-T'] = ['pointer']
-        self.availablecurves['LCA(internal) single'] = ['mu_norm', 'components', 'errors']
-        self.availablecurves['LCA(internal)-T'] = ['pointer']
+        self.availablecurves['LCA(internal) single'] = ['mu_norm', 'component 1',
+                                                        'component 2', 'component 3', 'errors']
+        self.availablecurves['LCA(internal)-t'] = ['pointer']
         self.directory = path_name_widget['directory'].text()
         self.fileshort = path_name_widget['raw file'].text()
         self.filename = os.path.join(self.directory, 'raw', self.fileshort + '.h5')
@@ -514,7 +533,7 @@ class XAS(Methods_Base):
                                       'left':'Data number'},
                           'LCA(internal) single':{'bottom':'Energy/eV',
                                                   'left':'<font> &mu; </font>'},
-                          'LCA(internal)-T':{'bottom':'data number',
+                          'LCA(internal)-t':{'bottom':'data number',
                                              'left':'fraction'}}
 
         self.ini_data_curve_color()
@@ -563,11 +582,13 @@ class XAS(Methods_Base):
                                       'z min':'98',
                                       'y min':'0',
                                       'y max': '100',
-                                      'components (internal LCA)': '2',
+                                      'component 1 (internal LCA)': '0',
+                                      'component 2 (internal LCA)': '',
+                                      'component 3 (internal LCA)': '',
                                       'range start (y)': '100',
                                       'range end (y)': '200',
-                                      'range start (x, data point)': '',
-                                      'range end (x, data point)': ''},
+                                      'range start (x)': '0',
+                                      'range end (x)': '100'},
                         'chi(k)-T': {'z max':'0.3',
                                      'z min':'-0.3',
                                      'y min': '0',
@@ -586,7 +607,7 @@ class XAS(Methods_Base):
         self.filter_flag_normalizing = False
         self.filter_flag_normalized = False
 
-        self.filtered = False
+        # self.filtered = False
         self.data_error = .001 # user defined data error
 
     def export_ts(self, winobj): # this could add to the principle data h5 file that's already there
@@ -600,17 +621,32 @@ class XAS(Methods_Base):
         # running plot_from_prep to have correct errors with each group/mu data
         # do lca
         # at least two components
-        component_start = int(self.linewidgets['mu_norm-T']['range start (y)'].text())
-        component_end = int(self.linewidgets['mu_norm-T']['range end (y)'].text())
-        amp_list = [param(.5, min=0, max=1), param(.5, min=0, max=1)]
-        components_list = [self.grouplist[component_start].norm, self.grouplist[component_end].norm]
-        components_num = int(self.linedit['mu_norm-T']['components (internal LCA)'].text())
-        if components_num > 2:
-            for k in range(components_num - 2):
-                amp_list.append(param(0,min=1,max=1))
+        # according to larch minimize
+        c_all = []
+        for i in range(3):
+            t = self.linewidgets['mu_norm-T']['component %i (internal LCA)' % (i + 1)].text()
+            try:
+                t = int(t)
+            except:
+                print('component %i is not activated' % (i + 1))
+            else:
+                c_all.append(self.grouplist[t]) # larch accept group as component
 
-        def lca_cal(amp_list, data): pass
+        y_start = int(self.linewidgets['mu_norm-T']['range start (y)'].text())
+        y_end = int(self.linewidgets['mu_norm-T']['range end (y)'].text())
+        x_start = float(self.linewidgets['mu_norm-T']['range start (x)'].text())
+        x_end = float(self.linewidgets['mu_norm-T']['range end (x)'].text())
 
+        self.lca_result_group = []
+        for k in np.arange(y_start, y_end):
+            print('fitting data %i' % k)
+            self.lca_result_group.append(larch.math.lincombo_fit(group = self.grouplist[k],
+                                                                 components = c_all,
+                                                                 minvals = [0] * len(c_all),
+                                                                 maxvals = [1] * len(c_all),
+                                                                 arrayname = 'norm',
+                                                                 xmin = x_start, xmax = x_end))
+            if k == y_end - 1: print('done with LCA')
 
     def range_select(self, winobj):
         # to select range for peaks sorting
@@ -631,15 +667,17 @@ class XAS(Methods_Base):
     def range_clicked(self, evt, pw): # watch out the difference between the nominal and actual x position
         if pw.sceneBoundingRect().contains(evt.scenePos()):
             mouse_point = pw.vb.mapSceneToView(evt.scenePos())  # directly, we have a viewbox!!!
-            temptext = self.actwidgets['mu_norm_T']['x, y range start (Ctrl+R)'].text()
+            temptext = self.actwidgets['mu_norm-T']['x, y range start (Ctrl+R)'].text()
             actual_x = mouse_point.x() / self.entrydata.shape[2] * \
                        (self.entrydata[0,0,-1] - self.entrydata[0,0,0]) + self.entrydata[0,0,0]
             if temptext == 'x, y range end (Ctrl+R)':
                 self.linewidgets['mu_norm-T']['range start (y)'].setText(str(int(mouse_point.y())))
                 self.linewidgets['mu_norm-T']['range start (x)'].setText('{:.1f}'.format(actual_x))
+                self.linewidgets['mu_norm-T']['component 1 (internal LCA)'].setText(str(int(mouse_point.y())))
             elif temptext == 'done (Ctrl+R)':
                 self.linewidgets['mu_norm-T']['range end (y)'].setText(str(int(mouse_point.y())))
                 self.linewidgets['mu_norm-T']['range end (x)'].setText('{:.1f}'.format(actual_x))
+                self.linewidgets['mu_norm-T']['component 2 (internal LCA)'].setText(str(int(mouse_point.y())))
 
     def filter_all_normalizing(self, winobj): # make some warning sign here
         qbtn = winobj.sender()
@@ -661,7 +699,11 @@ class XAS(Methods_Base):
 
     def plot_from_prep(self, winobj): # generate larch Group for all data ! not related to 'load from prep' any more
         for index in range(self.entrydata.shape[0]): # 0,1,...,self.entrydata.shape[0] - 1
-            mu = np.log(self.entrydata[index, 1, ::] / self.entrydata[index, 2, ::])
+            if (self.entrydata[index, 1:2, ::] <= 0).any():
+                mu = np.zeros(self.entrydata.shape[2])
+            else:
+                mu = np.log(self.entrydata[index, 1, ::] / self.entrydata[index, 2, ::])
+            # a way to prevent mu become nan ! when the electrometer readings are so small
 
             if len(self.grouplist) != self.entrydata.shape[0]:
                 self.grouplist.append(Group(name='spectrum' + str(index)))
@@ -688,31 +730,45 @@ class XAS(Methods_Base):
 
     def exafs_process_single(self, index, mu, mu_error):
         Energy = self.entrydata[index, 0, ::]
+        if not hasattr(self.grouplist[index], 'energy'):
+            self.grouplist[index].energy = Energy
+
         self.grouplist[index].mu_error = mu_error # this is customized attribute?
+        # print(isnan(mu) == True)
         try:
             e0 = find_e0(Energy, mu, group=self.grouplist[index])
-        except: print('bad data')
-        try:
-            pre_edge_point_1 = (e0 - Energy[0]) * (1 - self.parameters['normalizing']['pre-edge para 1'].setvalue)
-            post_edge_point_2 = (Energy[-1] - e0) * (1 - self.parameters['normalizing']['post-edge para 2'].setvalue)
-        except: print('bad data')
+            # print(str(index) + ' e0')
+        except:
+            print(str(index) + ' bad data, can not find e0')
+            e0 = Energy[int(len(Energy) / 5)]
+
+        pre_edge_point_1 = (e0 - Energy[0]) * (1 - self.parameters['normalizing']['pre-edge para 1'].setvalue)
+        post_edge_point_2 = (Energy[-1] - e0) * (1 - self.parameters['normalizing']['post-edge para 2'].setvalue)
         try:
             pre_edge(Energy, mu, group=self.grouplist[index],
                      pre1= - pre_edge_point_1,
                      pre2= - pre_edge_point_1 * self.parameters['normalizing']['pre-edge para 2'].setvalue,
                      norm2=post_edge_point_2,
                      norm1=post_edge_point_2 * self.parameters['normalizing']['post-edge para 1'].setvalue)
-        except: print('bad data')
+            # print(str(index) + 'pre_edge')
+        except:
+            print(str(index) + ' bad data, can not find pre/post edge')
+            self.grouplist[index].norm = np.ones(len(Energy))
+            self.grouplist[index].flat = np.ones(len(Energy))
+            self.grouplist[index].edge_step = 0
         try:
             autobk(Energy, mu, rbkg=self.parameters['normalized']['rbkg'].setvalue, group=self.grouplist[index])
-        except: print('bad data')
-        try:
-            xftf(self.grouplist[index].k, self.grouplist[index].chi,
-                 kmin=self.parameters['chi(k)']['kmin'].setvalue, kmax=self.parameters['chi(k)']['kmax'].setvalue,
-                 dk=self.parameters['chi(k)']['dk'].setvalue, window=self.parameters['chi(k)']['window'].choice,
-                 kweight=self.parameters['chi(k)']['kweight'].setvalue,
-                 group=self.grouplist[index])
-        except: print('bad data')
+            # print(str(index) + 'autobak')
+        except:
+            print(str(index) + ' bad data, can not find background')
+            self.grouplist[index].chi = np.zeros(int(len(self.grouplist[index].k))) # will this work
+        # try:
+        #     xftf(self.grouplist[index].k, self.grouplist[index].chi,
+        #          kmin=self.parameters['chi(k)']['kmin'].setvalue, kmax=self.parameters['chi(k)']['kmax'].setvalue,
+        #          dk=self.parameters['chi(k)']['dk'].setvalue, window=self.parameters['chi(k)']['window'].choice,
+        #          kweight=self.parameters['chi(k)']['kweight'].setvalue,
+        #          group=self.grouplist[index])
+        # except: print('bad data')
 
     def plot_from_load(self, winobj): # for time series
         winobj.setslider()
@@ -741,7 +797,10 @@ class XAS(Methods_Base):
 
             self.kspace.append(np.concatenate((self.grouplist[index].chi * np.square(self.grouplist[index].k),
                                                np.zeros(max(kspace_length) - kspace_length[index]))))
-            self.rspace.append(self.grouplist[index].chir_mag)
+
+            if hasattr(self.grouplist[index], 'chir_mag'):
+                self.rspace.append(self.grouplist[index].chir_mag)
+
             self.prep_progress.setValue(int((index + 1) / self.entrytimesec.shape[0] * 100))
 
         if self.checksdict['E0-t'].isChecked():
@@ -758,6 +817,26 @@ class XAS(Methods_Base):
 
             pw.plot(range(self.entrytimesec.shape[0]), self.Jump, symbol='o', symbolSize=10, symbolPen='r', name='Jump-t')
 
+        if self.checksdict['LCA(internal)-t'].isChecked():
+            pw = winobj.gdockdict[self.method_name].tabdict['LCA(internal)-t'].tabplot
+            for index in reversed(range(len(pw.items))):  # shocked!
+                if pw.items[index].name()[0:9] == 'Component': pw.removeItem(pw.items[index])
+
+            y_start = int(self.linewidgets['mu_norm-T']['range start (y)'].text())
+            y_end = int(self.linewidgets['mu_norm-T']['range end (y)'].text())
+            weights = {}
+            for y in np.arange(y_start, y_end):
+                for c_name in self.lca_result_group[y - y_start].weights:
+                    if y == y_start: weights[c_name] = []
+                    weights[c_name].append(self.lca_result_group[y - y_start].weights[c_name])
+
+            c_index = 0
+            color = ['r', 'b', 'g']
+            for c_name in self.lca_result_group[y - y_start].weights:
+                pw.plot(np.arange(y_start, y_end), weights[c_name],
+                        symbol='+', symbolSize=10, symbolPen=color[c_index], name='Component {}'.format(c_index + 1))
+                c_index += 1
+            
         if self.checksdict['mu_norm-T'].isChecked(): # shocked! this naughty chi-k has irregular shape!
             pw = winobj.gdockdict[self.method_name].tabdict['mu_norm-T'].tabplot
             for index in reversed(range(len(pw.items))):  # shocked!
@@ -774,13 +853,13 @@ class XAS(Methods_Base):
             self.plot_chi_2D(max(kspace_length), 0, self.grouplist[kspace_length.index(max(kspace_length))].k[-1], 2, pw,
                              np.array(self.kspace), 'chi(k)-T')
 
-        if self.checksdict['chi(r)-T'].isChecked():
-            pw = winobj.gdockdict[self.method_name].tabdict['chi(r)-T'].tabplot
-            for index in reversed(range(len(pw.items))):  # shocked!
-                if isinstance(pw.items[index], pg.ImageItem): pw.removeItem(pw.items[index])
-
-            self.plot_chi_2D(len(self.grouplist[0].r), 0, self.grouplist[0].r[-1], 2, pw,
-                             np.array(self.rspace), 'chi(r)-T')
+        # if self.checksdict['chi(r)-T'].isChecked():
+        #     pw = winobj.gdockdict[self.method_name].tabdict['chi(r)-T'].tabplot
+        #     for index in reversed(range(len(pw.items))):  # shocked!
+        #         if isinstance(pw.items[index], pg.ImageItem): pw.removeItem(pw.items[index])
+        #
+        #     self.plot_chi_2D(len(self.grouplist[0].r), 0, self.grouplist[0].r[-1], 2, pw,
+        #                      np.array(self.rspace), 'chi(r)-T')
 
     def plot_chi_2D(self, r_range, r_min, r_max, step, pw, rspace_array, mode):
         xticklabels = []
@@ -807,6 +886,7 @@ class XAS(Methods_Base):
         color_map = pg.colormap.get('CET-R4')
         color_bar_ts = pg.ColorBarItem(values=(float(self.linewidgets[mode]['z min'].text()),
                                                     float(self.linewidgets[mode]['z max'].text())), cmap=color_map)
+        # color_bar_ts = pg.ColorBarItem(values=(rspace_array.max() * .9, rspace_array.max()), cmap=color_map)
         color_bar_ts.setImageItem(img_ts, pw)
         if hasattr(self, 'y_range'):
             pw.setYRange(self.y_range[0], self.y_range[1])
@@ -935,19 +1015,20 @@ class XAS(Methods_Base):
         # by abandon 'normalized' filter, there is less complexity.
         # when moving the slider, curves in other tabs change back to unfiltered state. this is actually good--fast!
 
-        if self.filtered: # detected by MainWin; but will the following work?
-            if self.checksdict['normalizing'].isChecked():
-                mu_filtered, mu_filtered_error = self.filter_single_point(self.index, 'normalizing')
-                if not (mu_filtered == mu).all():
-                    self.exafs_process_single(self.index, mu_filtered, mu_filtered_error)
+        # if self.filtered: # detected by MainWin; but will the following work?
+        if self.checksdict['normalizing'].isChecked():
+            mu_filtered, mu_filtered_error = self.filter_single_point(self.index, 'normalizing')
+            # if not (mu_filtered == mu).all():
+            #     self.exafs_process_single(self.index, mu_filtered, mu_filtered_error)
 
-            if self.checksdict['normalized'].isChecked():
-                mu_filtered_2, mu_filtered_error_2 = self.filter_single_point(self.index, 'normalized')
-                if not (mu_filtered_2 == mu_filtered).all():
-                    self.exafs_process_single(self.index, mu_filtered, mu_filtered_error)
+        if self.checksdict['normalized'].isChecked():
+            mu_filtered, mu_filtered_error = self.filter_single_point(self.index, 'normalized')
+            # if not (mu_filtered_2 == mu_filtered).all():
+            #     self.exafs_process_single(self.index, mu_filtered, mu_filtered_error)
 
         # for other parameters
-        if para_update: self.exafs_process_single(self.index, mu_filtered, mu_filtered_error)
+        # if para_update: self.exafs_process_single(self.index, mu_filtered, mu_filtered_error)
+        self.exafs_process_single(self.index, mu_filtered, mu_filtered_error)
 
         self.dynamictitle = 'data' + str(self.index + 1) + '\t start:' + self.startime + '\t end:' + self.endtime
 
@@ -1010,12 +1091,13 @@ class XAS(Methods_Base):
             self.data_timelist[0]['chi(k)']['window'].data = np.transpose([self.grouplist[self.index].k, self.grouplist[self.index].kwin])
 
         # chi(r)
-        if 'chi-r' in self.curve_timelist[0]['chi(r)']:
-            self.data_timelist[0]['chi(r)']['chi-r'].data = np.transpose([self.grouplist[self.index].r, self.grouplist[self.index].chir_mag])
-        if 'Re chi-r' in self.curve_timelist[0]['chi(r)']:
-            self.data_timelist[0]['chi(r)']['Re chi-r'].data = np.transpose([self.grouplist[self.index].r, self.grouplist[self.index].chir_re])
-        if 'Im chi-r' in self.curve_timelist[0]['chi(r)']:
-            self.data_timelist[0]['chi(r)']['Im chi-r'].data = np.transpose([self.grouplist[self.index].r, self.grouplist[self.index].chir_im])
+        if hasattr(self.grouplist[self.index], 'chir_mag'):
+            if 'chi-r' in self.curve_timelist[0]['chi(r)']:
+                self.data_timelist[0]['chi(r)']['chi-r'].data = np.transpose([self.grouplist[self.index].r, self.grouplist[self.index].chir_mag])
+            if 'Re chi-r' in self.curve_timelist[0]['chi(r)']:
+                self.data_timelist[0]['chi(r)']['Re chi-r'].data = np.transpose([self.grouplist[self.index].r, self.grouplist[self.index].chir_re])
+            if 'Im chi-r' in self.curve_timelist[0]['chi(r)']:
+                self.data_timelist[0]['chi(r)']['Im chi-r'].data = np.transpose([self.grouplist[self.index].r, self.grouplist[self.index].chir_im])
 
         # E0-t
         if 'pointer' in self.curve_timelist[0]['E0-t']:
@@ -1036,8 +1118,35 @@ class XAS(Methods_Base):
             self.plot_pointer('chi(k)-T', 0, self.index, 't2', 15)
 
         # chi(r)-T
-        if 'pointer' in self.curve_timelist[0]['chi(r)-T']:
-            self.plot_pointer('chi(r)-T', 0, self.index, 't2', 15)
+        # if hasattr(self.grouplist[self.index], 'chir_mag'):
+        #     if 'pointer' in self.curve_timelist[0]['chi(r)-T']:
+        #         self.plot_pointer('chi(r)-T', 0, self.index, 't2', 15)
+
+        # LCA single
+        if hasattr(self,'lca_result_group'):
+            y_start = int(self.linewidgets['mu_norm-T']['range start (y)'].text())
+            y_end = int(self.linewidgets['mu_norm-T']['range end (y)'].text())
+
+            if y_start <= self.index < y_end:
+                if 'mu_norm' in self.curve_timelist[0]['LCA(internal) single']:
+                    self.data_timelist[0]['LCA(internal) single']['mu_norm'].data = \
+                        np.transpose([Energy, self.grouplist[self.index].norm])  # can also be .flat
+
+                lca = self.lca_result_group[self.index - y_start]
+                c_index = 1
+                for c_name in lca.weights:
+                    if ('component %i' % c_index) in self.curve_timelist[0]['LCA(internal) single']:
+                        self.data_timelist[0]['LCA(internal) single']['component %i' % c_index].data = \
+                            np.transpose([lca.xdata, lca.ycomps[c_name]]) # name of Group
+                        c_index += 1
+
+                if 'computed' in self.curve_timelist[0]['LCA(internal) single']:
+                    self.data_timelist[0]['LCA(internal) single']['computed'].data = \
+                        np.transpose([lca.xdata, lca.yfit])
+
+                if 'errors' in self.curve_timelist[0]['LCA(internal) single']:
+                    self.data_timelist[0]['LCA(internal) single']['errors'].data = \
+                        np.transpose([lca.xdata, lca.yfit - lca.ydata])
 
 class XAS_INFORM_1(XAS):
     def __init__(self, path_name_widget):
@@ -1163,12 +1272,13 @@ class XAS_INFORM_2(XAS):
             if os.path.isdir(self.exportdir) and os.path.isfile(self.exportfile):
                 f = h5py.File(self.exportfile, 'r')
                 if 'y min' in list(f.keys()):
-                    self.y_range = [f['y min'], f['y max']]
+                    self.y_range = [f['y min'][()], f['y max'][()]]
 
-                for spectrum in f.keys():
-                    data = np.zeros((f[spectrum].shape[0], f[spectrum].shape[1]), dtype = 'float32')
-                    f[spectrum].read_direct(data)
-                    self.entrydata.append(data.T)
+                for spectrum in list(f.keys()):
+                    if spectrum[0:8] == 'spectrum':
+                        data = np.zeros((f[spectrum].shape[0], f[spectrum].shape[1]), dtype = 'float32')
+                        f[spectrum].read_direct(data)
+                        self.entrydata.append(data.T)
 
                 f.close()
                 # for tempname in sorted(glob.glob(self.exportdir + '*_spectrum'),
@@ -1195,59 +1305,62 @@ class XAS_INFORM_2(XAS):
                         data_single = np.zeros((data.shape[0], data.shape[1]), dtype='float32')
                         data.read_direct(data_single)                        
                         data_all[key] = np.array(data_single)
-                
-                f = h5py.File(self.exportfile, 'w')
-                data4xrd = []
-                for index in range(data.shape[0]): # output format has to be Energy, I0, I1
-                    if data.shape[1] % 2 == 0:
-                        half_index = int(data.shape[1] / 2 - 1)
-                        # print(half_index)
-                        # self.output_txt(np.array([data_all['energy'][index,0:half_index + 1], # E0
-                        #                           data_all['I0a'][index,0:half_index + 1] + data_all['I0b'][index,0:half_index + 1], # I0
-                        #                           data_all['I1'][index,0:half_index + 1]]).T, 2 * index) # I1
-                        back_sel = np.s_[data.shape[1] - 1:half_index:-1]
-                        # self.output_txt(np.array([data_all['energy'][index, back_sel], # E0
-                        #                           data_all['I0a'][index,back_sel] + data_all['I0b'][index,back_sel], # I0
-                        #                           data_all['I1'][index,back_sel]]).T, 2 * index + 1) # I1
 
-                    else: # most of data is odd number of energy points
-                        half_index = int((data.shape[1] + 1) / 2 - 1) # middle point by index
-                        # self.output_txt(np.array([data_all['energy'][index, 1:half_index + 1],  # E0
-                        #                           data_all['I0a'][index, 1:half_index + 1] + data_all['I0b'][index, 1:half_index + 1],  # I0
-                        #                           data_all['I1'][index, 1:half_index + 1]]).T, 2 * index)  # I1
-                        back_sel = np.s_[data.shape[1] - 2:half_index - 1:-1] # include the middle point, because the last data is xrd!
-                        # self.output_txt(np.array([data_all['energy'][index, back_sel],  # E0
-                        #                           data_all['I0a'][index, back_sel] + data_all['I0b'][index, back_sel], # I0
-                        #                           data_all['I1'][index, back_sel]]).T, 2 * index + 1)  # I1
+                if data:
+                    f = h5py.File(self.exportfile, 'w')
+                    data4xrd = []
+                    for index in range(data.shape[0]): # output format has to be Energy, I0, I1
+                        if data.shape[1] % 2 == 0:
+                            half_index = int(data.shape[1] / 2 - 1)
+                            # print(half_index)
+                            # self.output_txt(np.array([data_all['energy'][index,0:half_index + 1], # E0
+                            #                           data_all['I0a'][index,0:half_index + 1] + data_all['I0b'][index,0:half_index + 1], # I0
+                            #                           data_all['I1'][index,0:half_index + 1]]).T, 2 * index) # I1
+                            back_sel = np.s_[data.shape[1] - 1:half_index:-1]
+                            # self.output_txt(np.array([data_all['energy'][index, back_sel], # E0
+                            #                           data_all['I0a'][index,back_sel] + data_all['I0b'][index,back_sel], # I0
+                            #                           data_all['I1'][index,back_sel]]).T, 2 * index + 1) # I1
 
-                    data_range = self.sel_by_energy_range(data_all['energy'][index, 0:half_index + 1])
-                    data_half_1 = np.array([data_all['energy'][index, data_range],  # E0
-                                          data_all['I0a'][index, data_range] + data_all['I0b'][index, data_range],  # I0
-                                          data_all['I1'][index, data_range]])  # I1
-                    self.entrydata.append(data_half_1)
-                    f.create_dataset('spectrum_{:04d}'.format(index * 2), data=data_half_1.T)
+                        else: # most of data is odd number of energy points
+                            half_index = int((data.shape[1] + 1) / 2 - 1) # middle point by index
+                            # self.output_txt(np.array([data_all['energy'][index, 1:half_index + 1],  # E0
+                            #                           data_all['I0a'][index, 1:half_index + 1] + data_all['I0b'][index, 1:half_index + 1],  # I0
+                            #                           data_all['I1'][index, 1:half_index + 1]]).T, 2 * index)  # I1
+                            back_sel = np.s_[data.shape[1] - 1:half_index:-1] # not include the middle point, because the it is xrd!
+                            # self.output_txt(np.array([data_all['energy'][index, back_sel],  # E0
+                            #                           data_all['I0a'][index, back_sel] + data_all['I0b'][index, back_sel], # I0
+                            #                           data_all['I1'][index, back_sel]]).T, 2 * index + 1)  # I1
 
-                    data_range = self.sel_by_energy_range(data_all['energy'][index, back_sel])
-                    data_half_2 = np.array([data_all['energy'][index, back_sel][data_range],  # E0
-                                          data_all['I0a'][index, back_sel][data_range] +
-                                          data_all['I0b'][index, back_sel][data_range],  # I0
-                                          data_all['I1'][index, back_sel][data_range]])  # I1
-                    self.entrydata.append(data_half_2)
-                    f.create_dataset('spectrum_{:04d}'.format(index * 2 + 1), data=data_half_2.T)
+                        data_range = self.sel_by_energy_range(data_all['energy'][index, 0:half_index + 1])
+                        data_half_1 = np.array([data_all['energy'][index, data_range],  # E0
+                                              data_all['I0a'][index, data_range] + data_all['I0b'][index, data_range],  # I0
+                                              data_all['I1'][index, data_range]])  # I1
+                        self.entrydata.append(data_half_1)
+                        f.create_dataset('spectrum_{:04d}'.format(index * 2), data=data_half_1.T)
 
-                    # extract data for xrd normalization
-                    # the first xrd
-                    data4xrd.append(np.array([data_all['energy'][index, 0],  # E0
-                                               data_all['I0a'][index, 0] + data_all['I0b'][index, 0],  # I0
-                                               data_all['I1'][index, 0]]).T  # I1
-                                     )
-                    # the second xrd
-                    data4xrd.append(np.array([data_all['energy'][index, half_index],  # E0
-                                              data_all['I0a'][index, half_index] + data_all['I0b'][index, half_index],  # I0
-                                              data_all['I1'][index, half_index]]).T  # I1
-                                    )
+                        data_range = self.sel_by_energy_range(data_all['energy'][index, back_sel])
+                        data_half_2 = np.array([data_all['energy'][index, back_sel][data_range],  # E0
+                                              data_all['I0a'][index, back_sel][data_range] +
+                                              data_all['I0b'][index, back_sel][data_range],  # I0
+                                              data_all['I1'][index, back_sel][data_range]])  # I1
+                        self.entrydata.append(data_half_2)
+                        f.create_dataset('spectrum_{:04d}'.format(index * 2 + 1), data=data_half_2.T)
 
-                f.close()
+                        # extract data for xrd normalization
+                        # the first xrd
+                        data4xrd.append(np.array([data_all['energy'][index, 0],  # E0
+                                                   data_all['I0a'][index, 0] + data_all['I0b'][index, 0],  # I0
+                                                   data_all['I1'][index, 0]]).T  # I1
+                                         )
+                        # the second xrd
+                        data4xrd.append(np.array([data_all['energy'][index, half_index],  # E0
+                                                  data_all['I0a'][index, half_index] + data_all['I0b'][index, half_index],  # I0
+                                                  data_all['I1'][index, half_index]]).T  # I1
+                                        )
+
+                    f.close()
+                else:
+                    print('data not read in')
 
                 # output data for xrd
                 with open(os.path.join(self.directory, 'process', self.fileshort + '_xas4xrd'), 'w') as f:
@@ -1392,9 +1505,6 @@ class XRD(Methods_Base):
                              'Triclinic']
 
         self.parameters = {'integrated': {'scale': Paraclass(strings=('log10', ['log10', 'sqrt', 'linear'])),
-                                          'normalization': Paraclass(strings=('not normalized',
-                                                                             ['not normalized',
-                                                                              'normalized to I0 and \u03BC d'])),
                                           'x axis': Paraclass(strings=('q',['q','2th','d'])),
                                           'clip head': Paraclass(values=(0,0,1000,1)),
                                           'clip tail': Paraclass(values=(1, 1, 1000, 1)),
@@ -1408,6 +1518,9 @@ class XRD(Methods_Base):
                            # these parameters are special: they do not call data_process.
                            # change them also in ShowData.update_parameters!
                            'time series': {'scale': Paraclass(strings=('log10', ['log10', 'sqrt', 'linear'])),
+                                           'normalization': Paraclass(strings=('not normalized',
+                                                                               ['not normalized',
+                                                                                'normalized to I0 and \u03BC d'])),
                                            'gap y tol.': Paraclass(values=(1,1,20,1)),
                                            'gap x tol.': Paraclass(values=(1,1,100,1)),
                                            'min time span': Paraclass(values=(5,1,50,1)),
@@ -1486,21 +1599,17 @@ class XRD(Methods_Base):
             print(stderr.readlines())
 
     def read_intg(self): # it's raw, not normal here, can make a choice in the future
-        try:
-            with h5py.File(self.exportfile, 'r') as f:
-                if self.parameters['integrated']['normalization'].choice == 'not normalized':
-                    intdata_all = f['rawresult']
-                else:
-                    intdata_all = f['normresult']
+        with h5py.File(self.exportfile, 'r') as f:
+            if self.parameters['time series']['normalization'].choice == 'not normalized':
+                intdata_all = f['rawresult']
+            else:
+                intdata_all = f['normresult']
 
-                self.intdata_ts = np.zeros((intdata_all.shape[0], intdata_all.shape[1]), dtype='float32')
-                intdata_all.read_direct(self.intdata_ts)
-                self.intqaxis = np.array(list(f['info/q(Angstrom)']))
-                if 'y min' in list(f.keys()):
-                    self.y_range = [f['y min'], f['y max']]
-
-        except:
-            print('do integration first')
+            self.intdata_ts = np.zeros((intdata_all.shape[0], intdata_all.shape[1]), dtype='float32')
+            intdata_all.read_direct(self.intdata_ts)
+            self.intqaxis = np.array(list(f['info/q(Angstrom)']))
+            if 'y min' in list(f.keys()):
+                self.y_range = [f['y min'][()], f['y max'][()]]
 
     def output_intg(self, q, result, norm_result, wavelength, interval):
         if not os.path.isdir(self.exportdir): os.mkdir(self.exportdir)
@@ -1896,41 +2005,49 @@ class XRD(Methods_Base):
         # self.slideradded = True
         # winobj.slideradded = True
         # if not hasattr(self,'read_intg'):
-        self.read_intg() # issue?
-        if self.checksdict['time series'].isChecked():
-            self.curvedict['time series']['pointer'].setChecked(True)
-            if self.parameters['time series']['scale'].choice == 'log10':
-                intdata_ts = np.log10(self.intdata_ts)
-            if self.parameters['time series']['scale'].choice == 'sqrt':
-                intdata_ts = np.sqrt(self.intdata_ts)
-            if self.parameters['time series']['scale'].choice == 'linear':
-                intdata_ts = self.intdata_ts
+        try:
+            self.read_intg() # issue?
+        except:
+            print('do integration first')
+        else:
+            if self.checksdict['time series'].isChecked():
+                self.curvedict['time series']['pointer'].setChecked(True)
+                if self.parameters['time series']['scale'].choice == 'log10':
+                    intdata_ts = np.log10(self.intdata_ts)
+                if self.parameters['time series']['scale'].choice == 'sqrt':
+                    intdata_ts = np.sqrt(self.intdata_ts)
+                if self.parameters['time series']['scale'].choice == 'linear':
+                    intdata_ts = self.intdata_ts
 
-            pw = winobj.gdockdict[self.method_name].tabdict['time series'].tabplot
-            for index in reversed(range(len(pw.items))):  # shocked!
-                if isinstance(pw.items[index], pg.ImageItem): pw.removeItem(pw.items[index])
+                pw = winobj.gdockdict[self.method_name].tabdict['time series'].tabplot
+                for index in reversed(range(len(pw.items))):  # shocked!
+                    if isinstance(pw.items[index], pg.ImageItem): pw.removeItem(pw.items[index])
 
-            xticklabels = []
-            for tickvalue in np.arange(self.intqaxis[0], self.intqaxis[-1], 0.2):  # hope it works
-                xticklabels.append((self.intqaxis.shape[0] / (self.intqaxis[-1] - self.intqaxis[0])
-                                    * (tickvalue - self.intqaxis[0]), "{:4.1f}".format(tickvalue))) # 10 is the total width
+                xticklabels = []
+                for tickvalue in np.arange(self.intqaxis[0], self.intqaxis[-1], 0.2):  # hope it works
+                    xticklabels.append((self.intqaxis.shape[0] / (self.intqaxis[-1] - self.intqaxis[0])
+                                        * (tickvalue - self.intqaxis[0]), "{:4.1f}".format(tickvalue))) # 10 is the total width
 
-            xticks = pw.getAxis('bottom')
-            xticks.setTicks([xticklabels])
+                xticks = pw.getAxis('bottom')
+                xticks.setTicks([xticklabels])
 
-            if hasattr(self, 'color_bar_ts'):
-                pw.removeItem(self.img_ts)
-                self.color_bar_ts.close()
+                if hasattr(self, 'color_bar_ts'):
+                    pw.removeItem(self.img_ts)
+                    self.color_bar_ts.close()
 
-            self.img_ts = pg.ImageItem(image=np.transpose(intdata_ts)) # need transpose here ?
-            self.img_ts.setZValue(-100) # as long as less than 0
-            pw.addItem(self.img_ts)
-            color_map = pg.colormap.get('CET-R4')
-            intdata_ts[isnan(intdata_ts)] = 0 # surprise!
-            self.color_bar_ts = pg.ColorBarItem(values=(0, intdata_ts.max()), cmap=color_map)
-            self.color_bar_ts.setImageItem(self.img_ts, pw)
-            if hasattr(self, 'y_range'):
-                pw.setYRange(self.y_range[0], self.y_range[1])
+                self.img_ts = pg.ImageItem(image=np.transpose(intdata_ts)) # need transpose here ?
+                self.img_ts.setZValue(-100) # as long as less than 0
+                pw.addItem(self.img_ts)
+                color_map = pg.colormap.get('CET-R4')
+                intdata_ts[isnan(intdata_ts)] = 0 # surprise!
+                intdata_ts[np.isinf(intdata_ts)] = 0
+                # this one has grains on plot
+                # self.color_bar_ts = pg.ColorBarItem(values=(intdata_ts.min(), intdata_ts.max()), cmap=color_map)
+                # this one is more lovely
+                self.color_bar_ts = pg.ColorBarItem(values=(0, intdata_ts.max()), cmap=color_map)
+                self.color_bar_ts.setImageItem(self.img_ts, pw)
+                if hasattr(self, 'y_range'):
+                    pw.setYRange(self.y_range[0], self.y_range[1])
 
         if hasattr(self, 'refinegpx'):
             cell_para = []
@@ -2084,7 +2201,10 @@ class XRD(Methods_Base):
                     self.read_data_index(self.index)
 
                 if self.checksdict['integrated'].isChecked() or self.checksdict['time series'].isChecked():
-                    self.intdata = self.intdata_ts[self.index]
+                    try:
+                        self.intdata = self.intdata_ts[self.index]
+                    except:
+                        print('not matched array size between time and data number?')
 
         # if self.refinedata: # if not [], read according to para value, not global slider value
         #     self.refine_df = pd.read_csv(self.refinedata[self.parameters['refinement single']['data number'].setvalue],
@@ -2387,9 +2507,10 @@ class XRD_INFORM_2(XRD):
 
     def time_range(self, winobj):
         for key in winobj.path_name_widget: # to distinguish xrd_1, xrd_2
-            if self.fileshort == winobj.path_name_widget[key]['raw file'].text() and \
-                    self.ponifile.split('\\')[-1] == winobj.path_name_widget[key]['PONI file'].text():
-                self.method_name = key
+            if self.fileshort == winobj.path_name_widget[key]['raw file'].text():
+                if 'PONI file' in winobj.path_name_widget[key]:
+                    if self.ponifile.split('\\')[-1] == winobj.path_name_widget[key]['PONI file'].text():
+                        self.method_name = key
 
         if self.entrytimesec == []:
             if os.path.isfile(self.exportfile):
@@ -2452,19 +2573,18 @@ class XRD_INFORM_2_ONLY(XRD):
             # in essence, this method allow the intensity normalized by the flux, I0, and the amount of material, mu*d
 
             with h5py.File(data4xrd_file, 'r') as f:
-                I1 = np.zeros(f['I1'].shape[-1], dtype = 'float32')
-                f['I1'].read_direct(I1)
-                I0a = np.zeros(f['I1'].shape[-1], dtype='float32')
-                f['I0a'].read_direct(I0a)
-                I0b = np.zeros(f['I1'].shape[-1], dtype='float32')
-                f['I0a'].read_direct(I0b)
-                I0 = I0a + I0b
-                energy = np.zeros(f['I1'].shape[-1], dtype='float32')
-                f['energy'].read_direct(energy)
+                data = {}
+                for key in f.keys():
+                    if key != 'time':
+                        data[key] = np.zeros(f[key].shape[-1], dtype='float')
+                        f[key].read_direct(data[key])
 
-            with open(self.ponifile, 'r') as f:
-                wavelength = float(f.readlines()[-1].splitlines()[0].partition(' ')[2]) * 1e10 # in Angstrom
-
+            I0 = data['I0a'] + data['I0b']
+            I1 = data['I1']
+            energy = data['energy']
+            # with open(self.ponifile, 'r') as f:
+            #     wavelength = float(f.readlines()[-1].splitlines()[0].partition(' ')[2]) * 1e10 # in Angstrom
+            #
             self.wavelength = ev2nm / energy[0] * 10 # in Angstrom
 
             if not os.path.isdir(self.exportdir): os.mkdir(self.exportdir)
@@ -2499,6 +2619,12 @@ class XRD_INFORM_2_ONLY(XRD):
             #
             # shutil.copy(clusterfile,self.exportfile)
 
+            if raw_result.shape[0] < I0.shape[0]: # this is another menifestation of unreliabel data collection
+                # let's discard the last one, maybe few, of I0
+                I0 = I0[0:raw_result.shape[0]]
+                I1 = I1[0:raw_result.shape[0]]
+                self.entrytimesec = self.entrytimesec[0:raw_result.shape[0],:]
+
             self.output_intg(q * wavelength / self.wavelength * 10, # now in inverse nm, to be consistent with olde files
                              raw_result,
                              raw_result / I0[:,None] / (np.log(I0[:,None] / I1[:,None]) + 2.02),
@@ -2513,28 +2639,30 @@ class XRD_INFORM_2_ONLY(XRD):
 
     def time_range(self, winobj):
         for key in winobj.path_name_widget: # to distinguish xrd_1, xrd_2
-            if self.fileshort == winobj.path_name_widget[key]['raw file'].text() and \
-                    self.ponifile.split('\\')[-1] == winobj.path_name_widget[key]['PONI file'].text():
-                self.method_name = key
+            if self.fileshort == winobj.path_name_widget[key]['raw file'].text():
+                if 'PONI file' in winobj.path_name_widget[key]:
+                    if self.ponifile.split('\\')[-1] == winobj.path_name_widget[key]['PONI file'].text():
+                        self.method_name = key
 
         if self.entrytimesec == []:
             if os.path.isfile(self.exportfile):
                 with h5py.File(self.exportfile, 'r') as f:
                     self.entrytimesec = np.zeros((f['info/abs_time_in_sec'].shape[0], f['info/abs_time_in_sec'].shape[1]), dtype='float')
                     f['info/abs_time_in_sec'].read_direct(self.entrytimesec)
-            else:
+            else: # read in entrytimesec from xas raw file
                 data4xrd_file = os.path.join(self.directory, 'raw', self.fileshort[0:-6] + '.h5')
                 if os.path.isfile(data4xrd_file):
                     with h5py.File(data4xrd_file, 'r') as f:
                         endtime = time.mktime(
                             datetime.strptime(f['time'][0].decode(), '%Y-%m-%d %H:%M:%S.%f').timetuple())
-                        durations = np.zeros(f['integration_time'].shape[-1],dtype='float32')
-                        f['integration_time'].read_direct(durations)
+                        durations = np.ones(f['integration_time'].shape[-1] , dtype='float32')
+                        # f['integration_time'].read_direct(durations)
 
+                    durations = durations * float(winobj.path_name_widget[self.method_name]['time interval(ms)'].text()) # in ms
                     # self.entrytimesec = (startime + np.array([np.arange(0,len(durations)),
                     #                                         np.arange(1,len(durations) + 1)]) * durations[0] * 1e-6).T # check the unit!!!
-                    self.entrytimesec = (endtime - np.array([np.arange(len(durations) + 1, 0, -1),
-                                                              np.arange(len(durations), -1, -1 )]) * durations[0] * 1e-6).T  # check the unit!!!
+                    self.entrytimesec = (endtime - np.array([np.arange(len(durations), 0, -1), # double check the time size!!!
+                                                              np.arange(len(durations) - 1, -1, -1 )]) * durations[0] * 1e-3).T  # check the unit!!!
 
                 else:
                     print('you need to double check your file name')
@@ -2932,7 +3060,7 @@ class PL(Optic):
                 self.entrytimesec = np.zeros((f['time in seconds'].shape[0], 2), dtype='float32')
                 f['time in seconds'].read_direct(self.entrytimesec)
                 if 'y min' in list(f.keys()):
-                    self.y_range = [f['y min'], f['y max']]
+                    self.y_range = [f['y min'][()], f['y max'][()]]
 
         else:
             self.read_data_time(self.exportfile)
@@ -2963,7 +3091,7 @@ class Refl(Optic):
                                           'left': 'Data number'},
                           'fit-T': {'bottom': 'Data number',
                                      'left': ''}}
-        self.actions = {'raw': {'Export reference (Ctrl+X)': self.export_norm}}
+
         self.align_data = int(path_name_widget['align data number'].text())
         self.to_time = time.mktime(datetime.strptime(path_name_widget['to time'].text(), '%Y-%m-%dT%H:%M:%S').timetuple()) # in second
         self.aligned = False
@@ -2978,7 +3106,8 @@ class Refl(Optic):
                                        'y max':'1000'}} # ,
                                        # 'filter criterion':'2'}} # larger than 2 after referenced.
 
-        self.actions = {'time series':{'update range': self.update_range,}}
+        self.actions = {'time series':{'update range': self.update_range,},
+                        'raw': {'Export reference (Ctrl+X)': self.export_norm}}
                                        # 'update z': self.update_z}}
 
     # def updata_z(self, winobj): # this function is currently redundant as plot_optic_2D does not involve z values any more
@@ -3037,7 +3166,7 @@ class Refl(Optic):
                 # how important is this dtype!!! as the abs time in seconds is a large number, you need to choose 64!!! so critical!!!
                 f['time in seconds'].read_direct(self.entrytimesec)
                 if 'y min' in list(f.keys()):
-                    self.y_range = [f['y min'], f['y max']]
+                    self.y_range = [f['y min'][()], f['y max'][()]]
 
                 for key in list(f.keys()):
                     if key == 'refl_ref':
