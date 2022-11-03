@@ -490,7 +490,7 @@ class XAS(Methods_Base):
         self.availablemethods = ['raw', 'normalizing', 'normalized', 'chi(k)', 'chi(r)',
                                  'E0-t', 'Jump-t',
                                  'mu_norm-T', 'chi(k)-T',
-                                 # 'chi(r)-T',
+                                 'chi(r)-T',
                                  'LCA(internal) single', 'LCA(internal)-t']
         self.availablecurves['raw'] = ['I0', 'I1']
         self.availablecurves['normalizing'] = ['mu','filter by time','filter by energy',
@@ -550,18 +550,18 @@ class XAS(Methods_Base):
         #                    'kweight':2}
         # remember to set error proof for kmax, the max is the highest available k, not 20
         self.parameters = {'normalizing':{'Savitzky-Golay window (time)':Paraclass(values=(1,1,100,2)),
-                                          'Savitzky-Golay order (time)':Paraclass(values=(1,1,4,1)),
+                                          'Savitzky-Golay order (time)':Paraclass(values=(1, 1, 7, 2)),
                                           'Savitzky-Golay window (energy)': Paraclass(values=(1, 1, 100, 2)),
-                                          'Savitzky-Golay order (energy)': Paraclass(values=(1, 1, 4, 1)),
+                                          'Savitzky-Golay order (energy)': Paraclass(values=(1, 1, 7, 2)),
                                           'pre-edge para 1': Paraclass(values=(.01, 0, 1, .01)), # 0.01 of e0 - first point
                                           'pre-edge para 2': Paraclass(values=(.33, .05, .95, .01)), # 1/3 of e0 - pre 1
                                           'post-edge para 2': Paraclass(values=(.01, 0, 1, .01)), # 0.01 of last point - e0
                                           'post-edge para 1': Paraclass(values=(.33, .05, .95, .01))}, # 1/3 of post 1 - e0
                            'normalized':{'rbkg':Paraclass(values=(1,1,3,.1)),
                                          'Savitzky-Golay window (time)':Paraclass(values=(1,1,100,2)),
-                                         'Savitzky-Golay order (time)':Paraclass(values=(1,1,4,1)),
+                                         'Savitzky-Golay order (time)':Paraclass(values=(1, 1, 7, 2)),
                                          'Savitzky-Golay window (energy)': Paraclass(values=(1, 1, 100, 2)),
-                                         'Savitzky-Golay order (energy)': Paraclass(values=(1, 1, 4, 1)),},
+                                         'Savitzky-Golay order (energy)': Paraclass(values=(1, 1, 7, 2)),},
                            'chi(k)':{'kmin':Paraclass(values=(.9,0,3,.1)),
                                      'kmax':Paraclass(values=(6,3,20,.1)),
                                      'dk':Paraclass(values=(0,0,1,1)),
@@ -682,20 +682,20 @@ class XAS(Methods_Base):
     def filter_all_normalizing(self, winobj): # make some warning sign here
         qbtn = winobj.sender()
         if self.filter_flag_normalizing:
-            qbtn.setText('Go to click: Update by parameters')
+            qbtn.setText('filter all')
             self.filter_flag_normalizing = False
         else:
-            qbtn.setText('filter all')
+            qbtn.setText('do not filter all')
             self.filter_flag_normalizing = True
 
     def filter_all_normalized(self, winobj):
         qbtn = winobj.sender()
         if self.filter_flag_normalized:
             self.filter_flag_normalized = False
-            qbtn.setText('Go to click: Update by parameters')
+            qbtn.setText('filter all')
         else:
             self.filter_flag_normalized = True
-            qbtn.setText('filter all')
+            qbtn.setText('do not filter all')
 
     def plot_from_prep(self, winobj): # generate larch Group for all data ! not related to 'load from prep' any more
         for index in range(self.entrydata.shape[0]): # 0,1,...,self.entrydata.shape[0] - 1
@@ -721,11 +721,13 @@ class XAS(Methods_Base):
             # self.parameters['chi(k)']['kmax'].upper = self.grouplist[index].k[-1]
             # rspacexlen = len(self.grouplist[index].r)
         # self.plot_from_load(winobj)
-        if self.filter_flag_normalizing: # always update the binary files
-            with open(os.path.join(self.exportdir, self.fileshort + '_Group_List_Smoothed'), 'wb') as f:
-                pickle.dump(self.grouplist, f, -1)  # equals to pickle.HIGHEST_PROTOCOL
-        else: # prevent filtered data to be saved
-            with open(os.path.join(self.exportdir, self.fileshort + '_Group_List'), 'wb') as f:
+        # if self.filter_flag_normalizing: # always update the binary files
+        #     with open(os.path.join(self.exportdir, self.fileshort + '_Group_List_Smoothed'), 'wb') as f:
+        #         pickle.dump(self.grouplist, f, -1)  # equals to pickle.HIGHEST_PROTOCOL
+        # else: # prevent filtered data to be saved
+        output = os.path.join(self.exportdir, self.fileshort + '_Group_List')
+        if not os.path.isfile(output):
+            with open(output, 'wb') as f:
                 pickle.dump(self.grouplist, f, -1)
 
     def exafs_process_single(self, index, mu, mu_error):
@@ -756,19 +758,28 @@ class XAS(Methods_Base):
             self.grouplist[index].norm = np.ones(len(Energy))
             self.grouplist[index].flat = np.ones(len(Energy))
             self.grouplist[index].edge_step = 0
-        try:
-            autobk(Energy, mu, rbkg=self.parameters['normalized']['rbkg'].setvalue, group=self.grouplist[index])
-            # print(str(index) + 'autobak')
-        except:
-            print(str(index) + ' bad data, can not find background')
-            self.grouplist[index].chi = np.zeros(int(len(self.grouplist[index].k))) # will this work
-        # try:
-        #     xftf(self.grouplist[index].k, self.grouplist[index].chi,
-        #          kmin=self.parameters['chi(k)']['kmin'].setvalue, kmax=self.parameters['chi(k)']['kmax'].setvalue,
-        #          dk=self.parameters['chi(k)']['dk'].setvalue, window=self.parameters['chi(k)']['window'].choice,
-        #          kweight=self.parameters['chi(k)']['kweight'].setvalue,
-        #          group=self.grouplist[index])
-        # except: print('bad data')
+        # do autobk when chi(k) or chi(k)-T is checked
+        if self.checksdict['chi(k)'].isChecked() or self.checksdict['chi(k)-T'].isChecked() or \
+                self.checksdict['chi(r)'].isChecked() or self.checksdict['chi(r)-T'].isChecked():
+            try:
+                autobk(Energy, mu, rbkg=self.parameters['normalized']['rbkg'].setvalue, group=self.grouplist[index])
+                # print(str(index) + 'autobak')
+            except:
+                print(str(index) + ' bad data, can not find background')
+                self.grouplist[index].chi = np.zeros(int(len(self.grouplist[index].k))) # will this work
+        # do xftf when chi(r) or chi(r)-T is checked
+        if self.checksdict['chi(k)'].isChecked() or self.checksdict['chi(r)-T'].isChecked():
+            try:
+                xftf(self.grouplist[index].k, self.grouplist[index].chi,
+                     kmin=self.parameters['chi(k)']['kmin'].setvalue, kmax=self.parameters['chi(k)']['kmax'].setvalue,
+                     dk=self.parameters['chi(k)']['dk'].setvalue, window=self.parameters['chi(k)']['window'].choice,
+                     kweight=self.parameters['chi(k)']['kweight'].setvalue,
+                     group=self.grouplist[index])
+            except:
+                print(str(index) + ' bad data, can not find background')
+                self.grouplist[index].chir_mag = np.zeros(int(len(self.grouplist[index].r)))
+                self.grouplist[index].chir_re = np.zeros(int(len(self.grouplist[index].r)))
+                self.grouplist[index].chir_im = np.zeros(int(len(self.grouplist[index].r)))
 
     def plot_from_load(self, winobj): # for time series
         winobj.setslider()
@@ -853,13 +864,13 @@ class XAS(Methods_Base):
             self.plot_chi_2D(max(kspace_length), 0, self.grouplist[kspace_length.index(max(kspace_length))].k[-1], 2, pw,
                              np.array(self.kspace), 'chi(k)-T')
 
-        # if self.checksdict['chi(r)-T'].isChecked():
-        #     pw = winobj.gdockdict[self.method_name].tabdict['chi(r)-T'].tabplot
-        #     for index in reversed(range(len(pw.items))):  # shocked!
-        #         if isinstance(pw.items[index], pg.ImageItem): pw.removeItem(pw.items[index])
-        #
-        #     self.plot_chi_2D(len(self.grouplist[0].r), 0, self.grouplist[0].r[-1], 2, pw,
-        #                      np.array(self.rspace), 'chi(r)-T')
+        if self.checksdict['chi(r)-T'].isChecked():
+            pw = winobj.gdockdict[self.method_name].tabdict['chi(r)-T'].tabplot
+            for index in reversed(range(len(pw.items))):  # shocked!
+                if isinstance(pw.items[index], pg.ImageItem): pw.removeItem(pw.items[index])
+
+            self.plot_chi_2D(len(self.grouplist[0].r), 0, self.grouplist[0].r[-1], 2, pw,
+                             np.array(self.rspace), 'chi(r)-T')
 
     def plot_chi_2D(self, r_range, r_min, r_max, step, pw, rspace_array, mode):
         xticklabels = []
@@ -999,6 +1010,11 @@ class XAS(Methods_Base):
         elif os.path.isfile(tempfile):
             with open(tempfile, 'rb') as f:
                 self.grouplist = pickle.load(f)
+
+            # if no energy add energy list
+            if not hasattr(self.grouplist[0], 'energy'):
+                for k in range(len(self.grouplist)):
+                    self.grouplist[k].energy = self.entrydata[k,0,::]
         else:
             self.plot_from_prep(winobj)
 
