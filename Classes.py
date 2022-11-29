@@ -1,6 +1,7 @@
 import os
 import sys
 import glob
+import re
 # can handle multiple samples data; reference spectrum
 import h5py
 import numpy as np
@@ -15,7 +16,8 @@ from PyQt5.QtWidgets import *
 
 import pyqtgraph.dockarea
 import pyqtgraph as pg
-from draggabletabwidget import *
+from pyqtgraph import functions as fn # haha
+from draggabletabwidget_new import *
 from datetime import datetime
 import time
 import pickle
@@ -38,11 +40,29 @@ import shutil
 from paramiko import SSHClient
 
 # sys.path.insert(0,r"C:\Users\jialiu\gsas2full\GSASII")
-sys.path.insert(0,os.path.join(os.path.expanduser('~'), 'gsas2full', 'GSASII'))
+gsas_path = os.path.join(os.path.expanduser('~'), 'gsas2full', 'GSASII')
+sys.path.insert(0,gsas_path)
 import GSASIIindex
+import GSASIIspc
 import GSASIIlattice
 import GSASIIscriptable as G2sc
 np.seterr(divide = 'ignore')
+
+# add a stripped space group list
+tight_spg_f = os.path.join(gsas_path, 'tight_spg_file')
+if os.path.isfile(tight_spg_f):
+    with open(tight_spg_f, 'rb') as f:
+        tight_spg = pickle.load(f)
+
+else:
+    tight_spg = []
+    for spg in GSASIIspc.spgbyNum:
+        if spg != None:
+            tight_spg.append(spg.replace(' ',''))
+
+    with open(tight_spg_f, 'wb') as f:
+        pickle.dump(tight_spg, f)
+
 
 ev2nm = 1239.8419843320025
 
@@ -50,6 +70,212 @@ ev2nm = 1239.8419843320025
 # pypowder is not available - profile calcs. not allowed
 # pydiffax is not available for this platform
 # pypowder is not available - profile calcs. not allowed
+
+class MyGraphicsLayoutWidget(pg.GraphicsView): # only for methodobj == 'xrd' and (TabGraph).label == 'time series'
+    def __init__(self, tabgraphobj, methodobj, parent=None, show=False, size=None, title=None, **kargs):
+        pg.mkQApp()
+        pg.GraphicsView.__init__(self, parent)
+        self.ci = MyGraphicsLayout(tabgraphobj, methodobj, **kargs)
+        for n in ['nextRow', 'nextCol', 'nextColumn', 'addPlot', 'addViewBox', 'addItem', 'getItem', 'addLayout',
+                  'addLabel', 'removeItem', 'itemIndex', 'clear']:
+            setattr(self, n, getattr(self.ci, n))
+        self.setCentralItem(self.ci)
+
+        if size is not None:
+            self.resize(*size)
+
+        if title is not None:
+            self.setWindowTitle(title)
+
+        if show is True:
+            self.show()
+
+class MyGraphicsLayout(pg.GraphicsLayout):
+    def __init__(self, tabgraphobj, methodobj):
+        super(MyGraphicsLayout, self).__init__()
+        self.tabgraphobj = tabgraphobj
+        self.methodobj = methodobj
+
+    def addPlot(self, row=None, col=None, rowspan=1, colspan=1, **kargs):
+        plot = MyPlotItem(self.tabgraphobj, self.methodobj, **kargs)
+        self.addItem(plot, row, col, rowspan, colspan)
+        return plot
+
+class MyPlotItem(pg.PlotItem):
+    def __init__(self, tabgraphobj, methodobj):
+        super(MyPlotItem, self).__init__(viewBox=MyViewBox(tabgraphobj, methodobj))
+
+class MyViewBox(pg.ViewBox):
+    def __init__(self, tabgraphobj, methodobj):
+        super(MyViewBox, self).__init__()
+        self.act_list = []
+        for act in self.menu.actions():
+            self.menu.removeAction(act)
+            self.act_list.append(act)
+
+        self.updatecontextmenu = True
+        self.tabgraphobj = tabgraphobj
+        self.methodobj = methodobj
+
+    def getMenu(self, event):
+        act_ass_from = QAction('assign from', self.menu)
+        act_ass_from.triggered.connect(lambda : self.assign_from(self.tabgraphobj, self.methodobj))
+        act_ass_to = QAction('assign to', self.menu)
+        act_ass_to.triggered.connect(lambda: self.assign_to(self.tabgraphobj, self.methodobj))
+        if self.updatecontextmenu:
+            self.menu.addAction(act_ass_from)
+            self.menu.addAction(act_ass_to)
+            self.updatecontextmenu = False
+            for act in self.act_list:
+                self.menu.addAction(act)
+
+        return self.menu
+
+    def assign_from(self, tabgraphobj, methodobj):
+        peak_x = tabgraphobj.mousePoint.x()  # x and y are all data number, x is not actuall x!
+        peak_y = tabgraphobj.mousePoint.y()
+        # the following could be problematic: what if there is no integrated checkbox checked?!
+        q_start = int(methodobj.parameters['integrated']['clip head'].setvalue)  # q is also data num
+        # peak catalog step
+        if hasattr(methodobj, 'peaks_catalog_select'):
+            if methodobj.peaks_catalog_map != []:
+                index = 0
+                for peak in methodobj.peaks_catalog_select:
+                    # diff = peak[::, 0:2] - np.array([peak_y, peak_x - q_start])
+                    # dist = np.sqrt(np.diag(np.dot(diff, diff.T)))
+                    # the limit is .01 of the maximum of peak x position, about 30 data num in x in our case (3000 bin in q)
+                    # ignore dist in y direction (only a few hundred data usually)
+                    # if min(dist) < int(methodobj.linewidgets['time series']['assign proximity'].text()):
+                    diff_x = abs(peak[::,1] - (peak_x - q_start))
+                    diff_y = abs(peak[::,0] - peak_y)
+                    if min(diff_x) < int(methodobj.linewidgets['time series']['assign proximity x'].text()) and \
+                        min(diff_y) < int(methodobj.linewidgets['time series']['assign proximity y'].text()):
+                        methodobj.peak_ass_from = index
+                        print('find peak {} to assign from'.format(index))
+                        break
+
+                    index += 1
+        # phase assign step
+        if hasattr(methodobj, 'phases'):
+            if methodobj.phases_map != []:
+                index = 0
+                for phase in methodobj.phases: # each element of phases contains the index of peak in peaks_catalog_select
+                    for peak in phase:
+                        diff_x = abs(methodobj.peaks_catalog_select[peak][::, 1] - (peak_x - q_start))
+                        diff_y = abs(methodobj.peaks_catalog_select[peak][::, 0] - peak_y)
+                        if min(diff_x) < int(methodobj.linewidgets['time series']['assign proximity x'].text()) and \
+                                min(diff_y) < int(methodobj.linewidgets['time series']['assign proximity y'].text()):
+                            methodobj.phase_ass_from = [index, peak]
+                            print('find peak {} of phase {} to assign from'.format(peak, index))
+                            # break
+
+                    index += 1
+                    # if methodobj.phase_ass_from != []:
+                    #     break
+
+    # to add: export peaks_catalog_select and import at a later session
+    # to modify: peaks belong to multi phase
+
+    def assign_to(self, tabgraphobj, methodobj):
+        peak_x = tabgraphobj.mousePoint.x()  # x and y are all data number, x is not actuall x!
+        peak_y = tabgraphobj.mousePoint.y()
+        q_start = int(methodobj.parameters['integrated']['clip head'].setvalue)  # q is also data num
+        # the peak catalog step
+        if hasattr(methodobj, 'peaks_catalog_select'):
+            index_from = methodobj.peak_ass_from
+            if methodobj.peaks_catalog_map != [] and index_from != []:
+                index = 0
+                methodobj.peak_ass_to = []
+                for peak in methodobj.peaks_catalog_select:
+                    diff_x = abs(peak[::, 1] - (peak_x - q_start))
+                    diff_y = abs(peak[::, 0] - peak_y)
+                    if min(diff_x) < int(methodobj.linewidgets['time series']['assign proximity x'].text()) and \
+                            min(diff_y) < int(methodobj.linewidgets['time series']['assign proximity y'].text()):
+                        methodobj.peak_ass_to = index
+                        print('find peak {} to assign to'.format(index))
+                        break
+
+                    index += 1
+
+                index_to = methodobj.peak_ass_to
+                if index_to != []:
+                    temp = np.concatenate([methodobj.peaks_catalog_select[index_from], methodobj.peaks_catalog_select[index_to]]) # array
+                    methodobj.peaks_catalog_select[index_to] = temp[temp[:,0].argsort()]
+
+                    # methodobj.peaks_catalog_map[index_from].setSymbolBrush(methodobj.peaks_color[index_to])
+                    methodobj.peaks_catalog_map[index_to].setData(methodobj.peaks_catalog_select[index_to][::, 1] + q_start,
+                                                                  methodobj.peaks_catalog_select[index_to][::, 0],
+                                                                  symbol='o', symbolBrush=methodobj.peaks_color[index_to],
+                                                                  symbolSize=methodobj.parameters['time series']['symbol size'].setvalue)
+                    # # now delete it safely
+                    methodobj.peaks_catalog_select.pop(index_from)
+                    tabgraphobj.tabplot.removeItem(methodobj.peaks_catalog_map[index_from])  # correct?
+                    methodobj.peaks_catalog_map.pop(index_from)
+                    methodobj.peaks_color.pop(index_from) # for next assign to
+
+                methodobj.peak_ass_from = []  # prevent from repeat index
+
+        # the phase assign step
+        # give the found peak of phase i to phase j and delete phase i if there is no other peaks
+        if hasattr(methodobj, 'phases'):
+            index_from = methodobj.phase_ass_from  # two element: phase and peak
+            if methodobj.phases_map != [] and index_from != []:
+                index = 0
+                methodobj.phase_ass_to = []
+                # find the phase to assign
+                for phase in methodobj.phases:
+                    for peak in phase:
+                        diff_x = abs(methodobj.peaks_catalog_select[peak][::, 1] - (peak_x - q_start))
+                        diff_y = abs(methodobj.peaks_catalog_select[peak][::, 0] - peak_y)
+                        if min(diff_x) < int(methodobj.linewidgets['time series']['assign proximity x'].text()) and \
+                                min(diff_y) < int(methodobj.linewidgets['time series']['assign proximity y'].text()):
+                            methodobj.phase_ass_to = index
+                            print('find phase %i to assign to' % index)
+                            break
+
+                    index += 1
+                    # if methodobj.phase_ass_to != []:
+                    #     break
+
+                index_to = methodobj.phase_ass_to
+                if index_to != []: # should be no confusion to the previous step
+                    # list merge:
+                    methodobj.phases[index_to] = [index_from[1]] + methodobj.phases[index_to] # list
+                    # set data for index_to phase_map, hope the color is kept
+                    phase_peaks = methodobj.peaks_catalog_select[methodobj.phases[index_to][0]]
+                    if len(methodobj.phases[index_to]) > 1:
+                        for k in range(len(methodobj.phases[index_to]) - 1):
+                            phase_peaks = np.concatenate((phase_peaks,
+                                                          methodobj.peaks_catalog_select[methodobj.phases[index_to][k + 1]]))  # another shock!
+
+                    methodobj.phases_map[index_to].setData(phase_peaks[::, 1] + q_start, phase_peaks[::, 0],
+                                                           symbol='d', symbolBrush=methodobj.phases_color[index_to], pen=None,
+                                                           symbolSize=methodobj.parameters['time series']['symbol size'].setvalue)
+                    # delete the whole phase if there is only one peak
+                    if len(methodobj.phases[index_from[0]]) == 1:
+                        methodobj.phases.pop(index_from[0])
+                        tabgraphobj.tabplot.removeItem(methodobj.phases_map[index_from[0]])  # correct?
+                        # methodobj.phases_map[index_from[0]].setSymbolBrush(methodobj.phases_color[index_from[0]])
+                        methodobj.phases_map.pop(index_from[0])
+                        methodobj.phases_color.pop(index_from[0])
+                    else: # delete the peak found only
+                        # delete only one peak, FIRST!
+                        methodobj.phases[index_from[0]].remove(index_from[1])
+                        # update the phase_map of assign_from phase:
+                        phase_peaks = methodobj.peaks_catalog_select[methodobj.phases[index_from[0]][0]]
+                        if len(methodobj.phases[index_from[0]]) > 1:
+                            for k in range(len(methodobj.phases[index_from[0]]) - 1):
+                                phase_peaks = np.concatenate((phase_peaks,
+                                                              methodobj.peaks_catalog_select[methodobj.phases[index_from[0]][k + 1]]))  # another shock!
+
+                        # set data phase_map of index_from, hope the color is kept
+                        methodobj.phases_map[index_from[0]].setData(phase_peaks[::, 1] + q_start, phase_peaks[::, 0],
+                                                                    symbol='d', symbolBrush=methodobj.phases_color[index_from[0]], pen=None,
+                                                                    symbolSize=methodobj.parameters['time series']['symbol size'].setvalue)
+
+                        # methodobj.phases_map.pop(index_from[0])
+
+                    methodobj.phase_ass_from = [] # prevent from repeat index
 
 class Dataclass():
     def __init__(self):
@@ -99,7 +325,11 @@ class DockGraph():
 
     def deldock(self, winobj):
         winobj.removeDockWidget(self.dockobj)
-        
+        DraggableTabBar.dragging_widget_ = None
+        DraggableTabBar.tab_bar_instances_ = [] # these two lines work!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        del self.docktab
+        del self.dockobj
+
     def gencontroltab(self, winobj):
         self.tooltab = QToolBox()
         # self.tooltab.setObjectName(self.label)
@@ -157,18 +387,23 @@ class TabGraph_index(): # for xrd index
     def deltab(self, dockobj):
         index = dockobj.docktab.indexOf(self.itemwidget)
         dockobj.docktab.removeTab(index)
+        # del self.itemwidget
 
 class TabGraph():
     def __init__(self, name):
         self.label = name # e.g. raw, norm,...
 
     def mouseMoved(self, evt): # surprise!
-        mousePoint = self.tabplot.vb.mapSceneToView(evt) # not evt[0]
+        self.mousePoint = self.tabplot.vb.mapSceneToView(evt) # not evt[0]
         self.tabplot_label.setText("<span style='font-size: 10pt; color: black'> "
-                "x = %0.2f, <span style='color: black'> y = %0.2f</span>" % (mousePoint.x(), mousePoint.y()))
+                "x = %0.3f, <span style='color: black'> y = %0.2f</span>" % (self.mousePoint.x(), self.mousePoint.y()))
 
     def gentab(self, dockobj, methodobj): # generate a tab for a docking graph
-        self.graphtab = pg.GraphicsLayoutWidget()
+        if self.label == 'time series' and dockobj.label[0:3] == 'xrd':
+            self.graphtab = MyGraphicsLayoutWidget(self, methodobj)
+        else:
+            self.graphtab = pg.GraphicsLayoutWidget()
+
         dockobj.docktab.addTab(self.graphtab, self.label)
         self.tabplot_label = pg.LabelItem(justify='right')
         self.graphtab.addItem(self.tabplot_label)
@@ -183,6 +418,7 @@ class TabGraph():
     def deltab(self, dockobj):
         index = dockobj.docktab.indexOf(self.graphtab)
         dockobj.docktab.removeTab(index)
+        # del self.graphtab
 
     def gencontrolitem(self, dockobj):
         self.itemwidget = QWidget()
@@ -193,6 +429,7 @@ class TabGraph():
         dockobj.tooltab.addItem(self.itemwidget, self.label)
 
     def delcontrolitem(self, dockobj):
+        self.itemwidget.deleteLayout(self.itemlayout)
         index = dockobj.tooltab.indexOf(self.itemwidget)
         dockobj.tooltab.removeItem(index)
 
@@ -251,7 +488,7 @@ class TabGraph():
                     # tempwidget.setSingleStep(temppara.step)
                     tempwidget.setValue((temppara.setvalue - temppara.lower) / temppara.step)
                     tempwidget.valueChanged.connect(winobj.update_parameters)
-                    methodobj.paralabel[tabname][key] = QLabel(key + ':' + str(temppara.setvalue))
+                    methodobj.paralabel[tabname][key] = QLabel(key + ':' + '{:.1f}'.format(temppara.setvalue))
                 else:
                     methodobj.parawidgets[tabname][key] = QComboBox()
                     tempwidget = methodobj.parawidgets[tabname][key]
@@ -272,7 +509,7 @@ class TabGraph():
                     methodobj.actwidgets[tabname][key].setShortcut(key[-7:-1])
                 # tempfunc = getattr(methodobj, methodobj.actions[tabname][key])
 
-                if key == 'update range': # for update the range of 2D plot
+                if key == 'update y,z range (Ctrl+0)': # for update the range of 2D plot
                     methodobj.actwidgets[tabname][key].clicked.connect(
                         lambda state, t = tabname, k = key: methodobj.actions[t][k](winobj, methodobj, tabname))  # e,g, MainWin, XAS, munorm-T
                     # what is this state!!!???
@@ -331,7 +568,7 @@ class Methods_Base():
         # self.slideradded = False
 
         self.maxhue = 100  # 100 colorhues
-        self.huestep = 7 # color rotation increment
+        self.huestep = 3 # color rotation increment
 
     def update_range(self, winobj, methodobj, tabname):
         try:
@@ -375,10 +612,11 @@ class Methods_Base():
 
             key = methodobj.method_name
             sub_key = tabname
-            if item_colorbar and 'z min' in winobj.methodict[key].linewidgets[sub_key]:
-                item_colorbar.setLevels((float(winobj.methodict[key].linewidgets[sub_key]['z min'].text()),
-                                         float(winobj.methodict[key].linewidgets[sub_key]['z max'].text())))
-
+            try:
+                if item_colorbar and 'z min' in winobj.methodict[key].linewidgets[sub_key]:
+                    item_colorbar.setLevels((float(winobj.methodict[key].linewidgets[sub_key]['z min'].text()),
+                                             float(winobj.methodict[key].linewidgets[sub_key]['z max'].text())))
+            except: print('there is no color bar yet')
 
     def plot_pointer(self, tabname, p_x, p_y, symbol, size):
         self.data_timelist[0][tabname]['pointer'].data = np.array([[p_x], [p_y]]).transpose()
@@ -435,16 +673,17 @@ class Methods_Base():
             for subkey in self.availablecurves[key]:
                 newdata[key][subkey] = Dataclass()
                 # this error proof should always be present to separate, say curve from image
-                if data[key][subkey].data is not None:
-                    newdata[key][subkey].data = data[key][subkey].data
-                    if data[key][subkey].symbol is not None:
-                        newdata[key][subkey].symbol = data[key][subkey].symbol
-                        newdata[key][subkey].symbolsize = data[key][subkey].symbolsize
-                        newdata[key][subkey].symbolbrush = pg.intColor(self.colorhue[key], self.maxhue)
-                    elif data[key][subkey].pen is not None:
-                        newdata[key][subkey].pen = pg.mkPen(pg.intColor(self.colorhue[key], self.maxhue), width=1.5)
+                if hasattr(data[key][subkey], 'data'):
+                    if data[key][subkey].data is not None:
+                        newdata[key][subkey].data = data[key][subkey].data
+                        if data[key][subkey].symbol is not None:
+                            newdata[key][subkey].symbol = data[key][subkey].symbol
+                            newdata[key][subkey].symbolsize = data[key][subkey].symbolsize
+                            newdata[key][subkey].symbolbrush = pg.intColor(self.colorhue[key], self.maxhue)
+                        elif data[key][subkey].pen is not None:
+                            newdata[key][subkey].pen = pg.mkPen(pg.intColor(self.colorhue[key], self.maxhue), width=1.5)
 
-                    self.colorhue[key] += self.huestep
+                        self.colorhue[key] += self.huestep
 
         return newdata, newcurve
 
@@ -571,12 +810,12 @@ class XAS(Methods_Base):
 
         self.actions = {'normalizing':{'filter all': self.filter_all_normalizing},
                         'normalized': {'filter all': self.filter_all_normalized},
-                        'mu_norm-T':{'x, y range start (Ctrl+R)': self.range_select,
+                        'mu_norm-T':{'x, y select start (Ctrl+R)': self.range_select,
                                      'do internal LCA (Ctrl+Y)': self.lca_internal,
                                      'Export time series (Ctrl+X)': self.export_ts,
-                                     'update range': self.update_range},
-                        'chi(k)-T':{'update range': self.update_range},
-                        'chi(r)-T':{'update range': self.update_range}}
+                                     'update y,z range (Ctrl+0)': self.update_range},
+                        'chi(k)-T':{'update y,z range (Ctrl+0)': self.update_range},
+                        'chi(r)-T':{'update y,z range (Ctrl+0)': self.update_range}}
 
         self.linedit = {'mu_norm-T': {'z max':'102',
                                       'z min':'98',
@@ -585,10 +824,10 @@ class XAS(Methods_Base):
                                       'component 1 (internal LCA)': '0',
                                       'component 2 (internal LCA)': '',
                                       'component 3 (internal LCA)': '',
-                                      'range start (y)': '100',
-                                      'range end (y)': '200',
-                                      'range start (x)': '0',
-                                      'range end (x)': '100'},
+                                      'select start (y)': '100',
+                                      'select end (y)': '200',
+                                      'select start (x)': '0',
+                                      'select end (x)': '100'},
                         'chi(k)-T': {'z max':'0.3',
                                      'z min':'-0.3',
                                      'y min': '0',
@@ -632,10 +871,10 @@ class XAS(Methods_Base):
             else:
                 c_all.append(self.grouplist[t]) # larch accept group as component
 
-        y_start = int(self.linewidgets['mu_norm-T']['range start (y)'].text())
-        y_end = int(self.linewidgets['mu_norm-T']['range end (y)'].text())
-        x_start = float(self.linewidgets['mu_norm-T']['range start (x)'].text())
-        x_end = float(self.linewidgets['mu_norm-T']['range end (x)'].text())
+        y_start = int(self.linewidgets['mu_norm-T']['select start (y)'].text())
+        y_end = int(self.linewidgets['mu_norm-T']['select end (y)'].text())
+        x_start = float(self.linewidgets['mu_norm-T']['select start (x)'].text())
+        x_end = float(self.linewidgets['mu_norm-T']['select end (x)'].text())
 
         self.lca_result_group = []
         for k in np.arange(y_start, y_end):
@@ -651,32 +890,32 @@ class XAS(Methods_Base):
     def range_select(self, winobj):
         # to select range for peaks sorting
         pw = winobj.gdockdict[self.method_name].tabdict['mu_norm-T'].tabplot
-        tempwidget = self.actwidgets['mu_norm-T']['x, y range start (Ctrl+R)']
+        tempwidget = self.actwidgets['mu_norm-T']['x, y select start (Ctrl+R)']
         pw.scene().sigMouseClicked.connect(lambda evt, p=pw: self.range_clicked(evt, p))
-        if tempwidget.text() == 'x, y range start (Ctrl+R)':
-            tempwidget.setText('x, y range end (Ctrl+R)')
+        if tempwidget.text() == 'x, y select start (Ctrl+R)':
+            tempwidget.setText('x, y select end (Ctrl+R)')
             tempwidget.setShortcut('Ctrl+R')
-        elif tempwidget.text() == 'x, y range end (Ctrl+R)':
+        elif tempwidget.text() == 'x, y select end (Ctrl+R)':
             tempwidget.setText('done (Ctrl+R)')
             tempwidget.setShortcut('Ctrl+R')
         else:
-            tempwidget.setText('x, y range start (Ctrl+R)')
+            tempwidget.setText('x, y select start (Ctrl+R)')
             tempwidget.setShortcut('Ctrl+R')
             pw.scene().sigMouseClicked.disconnect()
 
     def range_clicked(self, evt, pw): # watch out the difference between the nominal and actual x position
         if pw.sceneBoundingRect().contains(evt.scenePos()):
             mouse_point = pw.vb.mapSceneToView(evt.scenePos())  # directly, we have a viewbox!!!
-            temptext = self.actwidgets['mu_norm-T']['x, y range start (Ctrl+R)'].text()
+            temptext = self.actwidgets['mu_norm-T']['x, y select start (Ctrl+R)'].text()
             actual_x = mouse_point.x() / self.entrydata.shape[2] * \
                        (self.entrydata[0,0,-1] - self.entrydata[0,0,0]) + self.entrydata[0,0,0]
-            if temptext == 'x, y range end (Ctrl+R)':
-                self.linewidgets['mu_norm-T']['range start (y)'].setText(str(int(mouse_point.y())))
-                self.linewidgets['mu_norm-T']['range start (x)'].setText('{:.1f}'.format(actual_x))
+            if temptext == 'x, y select end (Ctrl+R)':
+                self.linewidgets['mu_norm-T']['select start (y)'].setText(str(int(mouse_point.y())))
+                self.linewidgets['mu_norm-T']['select start (x)'].setText('{:.1f}'.format(actual_x))
                 self.linewidgets['mu_norm-T']['component 1 (internal LCA)'].setText(str(int(mouse_point.y())))
             elif temptext == 'done (Ctrl+R)':
-                self.linewidgets['mu_norm-T']['range end (y)'].setText(str(int(mouse_point.y())))
-                self.linewidgets['mu_norm-T']['range end (x)'].setText('{:.1f}'.format(actual_x))
+                self.linewidgets['mu_norm-T']['select end (y)'].setText(str(int(mouse_point.y())))
+                self.linewidgets['mu_norm-T']['select end (x)'].setText('{:.1f}'.format(actual_x))
                 self.linewidgets['mu_norm-T']['component 2 (internal LCA)'].setText(str(int(mouse_point.y())))
 
     def filter_all_normalizing(self, winobj): # make some warning sign here
@@ -752,7 +991,7 @@ class XAS(Methods_Base):
                      pre2= - pre_edge_point_1 * self.parameters['normalizing']['pre-edge para 2'].setvalue,
                      norm2=post_edge_point_2,
                      norm1=post_edge_point_2 * self.parameters['normalizing']['post-edge para 1'].setvalue)
-            # print(str(index) + 'pre_edge')
+            print(str(index) + 'pre_edge')
         except:
             print(str(index) + ' bad data, can not find pre/post edge')
             self.grouplist[index].norm = np.ones(len(Energy))
@@ -794,8 +1033,9 @@ class XAS(Methods_Base):
         self.kspace = []
         self.rspace = []  # time series
         kspace_length = [] # shocked! this naughty chi-k has irregular shape!
-        for index in range(self.entrydata.shape[0]):
-            kspace_length.append(len(self.grouplist[index].chi))
+        if hasattr(self.grouplist[0], 'chi'):
+            for index in range(self.entrydata.shape[0]):
+                kspace_length.append(len(self.grouplist[index].chi))
 
         for index in range(self.entrydata.shape[0]):
             self.E0.append(self.grouplist[index].e0)
@@ -806,8 +1046,9 @@ class XAS(Methods_Base):
             else:
                 self.espace.append(self.grouplist[index].norm)
 
-            self.kspace.append(np.concatenate((self.grouplist[index].chi * np.square(self.grouplist[index].k),
-                                               np.zeros(max(kspace_length) - kspace_length[index]))))
+            if hasattr(self.grouplist[index], 'chi'):
+                self.kspace.append(np.concatenate((self.grouplist[index].chi * np.square(self.grouplist[index].k),
+                                                   np.zeros(max(kspace_length) - kspace_length[index]))))
 
             if hasattr(self.grouplist[index], 'chir_mag'):
                 self.rspace.append(self.grouplist[index].chir_mag)
@@ -833,8 +1074,8 @@ class XAS(Methods_Base):
             for index in reversed(range(len(pw.items))):  # shocked!
                 if pw.items[index].name()[0:9] == 'Component': pw.removeItem(pw.items[index])
 
-            y_start = int(self.linewidgets['mu_norm-T']['range start (y)'].text())
-            y_end = int(self.linewidgets['mu_norm-T']['range end (y)'].text())
+            y_start = int(self.linewidgets['mu_norm-T']['select start (y)'].text())
+            y_end = int(self.linewidgets['mu_norm-T']['select end (y)'].text())
             weights = {}
             for y in np.arange(y_start, y_end):
                 for c_name in self.lca_result_group[y - y_start].weights:
@@ -856,7 +1097,7 @@ class XAS(Methods_Base):
             self.plot_chi_2D(self.entrydata.shape[2], self.entrydata[0,0,0], self.entrydata[0,0,-1], 100, pw,
                              np.array(self.espace) * 100, 'mu_norm-T')
 
-        if self.checksdict['chi(k)-T'].isChecked(): # shocked! this naughty chi-k has irregular shape!
+        if self.checksdict['chi(k)-T'].isChecked() and hasattr(self.grouplist[index], 'chi'):
             pw = winobj.gdockdict[self.method_name].tabdict['chi(k)-T'].tabplot
             for index in reversed(range(len(pw.items))):  # shocked!
                 if isinstance(pw.items[index], pg.ImageItem): pw.removeItem(pw.items[index])
@@ -864,7 +1105,7 @@ class XAS(Methods_Base):
             self.plot_chi_2D(max(kspace_length), 0, self.grouplist[kspace_length.index(max(kspace_length))].k[-1], 2, pw,
                              np.array(self.kspace), 'chi(k)-T')
 
-        if self.checksdict['chi(r)-T'].isChecked():
+        if self.checksdict['chi(r)-T'].isChecked() and hasattr(self.grouplist[index], 'chir_mag'):
             pw = winobj.gdockdict[self.method_name].tabdict['chi(r)-T'].tabplot
             for index in reversed(range(len(pw.items))):  # shocked!
                 if isinstance(pw.items[index], pg.ImageItem): pw.removeItem(pw.items[index])
@@ -1134,14 +1375,18 @@ class XAS(Methods_Base):
             self.plot_pointer('chi(k)-T', 0, self.index, 't2', 15)
 
         # chi(r)-T
-        # if hasattr(self.grouplist[self.index], 'chir_mag'):
-        #     if 'pointer' in self.curve_timelist[0]['chi(r)-T']:
-        #         self.plot_pointer('chi(r)-T', 0, self.index, 't2', 15)
+        if hasattr(self.grouplist[self.index], 'chir_mag'):
+            if 'pointer' in self.curve_timelist[0]['chi(r)-T']:
+                self.plot_pointer('chi(r)-T', 0, self.index, 't2', 15)
+
+        # LCA t
+        if self.checksdict['LCA(internal)-t'].isChecked():
+            self.plot_pointer('LCA(internal)-t', self.index, 1, 't', 15)
 
         # LCA single
         if hasattr(self,'lca_result_group'):
-            y_start = int(self.linewidgets['mu_norm-T']['range start (y)'].text())
-            y_end = int(self.linewidgets['mu_norm-T']['range end (y)'].text())
+            y_start = int(self.linewidgets['mu_norm-T']['select start (y)'].text())
+            y_end = int(self.linewidgets['mu_norm-T']['select end (y)'].text())
 
             if y_start <= self.index < y_end:
                 if 'mu_norm' in self.curve_timelist[0]['LCA(internal) single']:
@@ -1461,12 +1706,15 @@ class XAS_BATTERY_1(XAS):
 class XRD(Methods_Base):
     def __init__(self, path_name_widget):
         super(XRD, self).__init__()
-        self.availablemethods = ['raw', 'integrated', 'time series', 'refinement single',
+        self.availablemethods = ['raw', 'integrated', 'time series', 'single peak int.', 'refinement single',
                                  'centroid-T', 'integrated area-T', 'segregation degree-T']
         self.availablecurves['raw'] = ['show image']
         self.availablecurves['integrated'] = ['original', 'normalized to 1', # 'normalized to I0 and <font> &mu; </font>d',
                                               'truncated', 'smoothed', 'find peaks']
         self.availablecurves['time series'] = ['pointer']
+        self.availablecurves['single peak int.'] = ['peak position', 'estimated phase frac.',
+                                                    'center of mass', 'phase frac. by c.o.m.',
+                                                    'integration area', 'norm. int. area']
         self.availablecurves['refinement single'] = ['observed', 'calculated', 'difference']
         self.availablecurves['centroid-T'] = ['pointer']
         self.availablecurves['integrated area-T'] = ['pointer']
@@ -1490,7 +1738,7 @@ class XRD(Methods_Base):
         #     pf = np.loadtxt(self.refinephase[0])
         #     for ph in range(pf.shape[0]): self.availablecurves['refinement single'].append('phase' + str(ph))
 
-        self.colormax_set = False
+        # self.colormax_set = False
         self.axislabel = {'raw':{'bottom':'',
                                  'left':''},
                           'integrated': {'bottom': '<font> q / &#8491; </font> <sup> -1 </sup>,'
@@ -1499,6 +1747,8 @@ class XRD(Methods_Base):
                                         'left': 'Intensity'},
                           'time series': {'bottom': '<font> q / &#8491; </font> <sup> -1 </sup>',
                                         'left': 'Data number'},
+                          'single peak int.':{'bottom': 'Data number',
+                                              'left': 'a. u. or <font> &#8491; </font>'},
                           'refinement single': {'bottom': '<font> q / &#8491; </font> <sup> -1 </sup>,'
                                                    '<font> 2 &#952; / </font> <sup> o </sup>, or'
                                                    '<font> d / &#8491; </font>',
@@ -1514,8 +1764,8 @@ class XRD(Methods_Base):
 
         # unique to xrd
         # note that these parameter boundaries can be changed
-        self.bravaisNames = ['Cubic-F', 'Cubic-I', 'Cubic-P', 'Trigonal-R', 'Trigonal/Hexagonal-P',
-                             'Tetragonal-I', 'Tetragonal-P', 'Orthorhombic-F', 'Orthorhombic-I', 'Orthorhombic-A',
+        self.bravaisNames = ['Cubic-F', 'Cubic-I', 'Cubic-P', 'Trigonal-R', 'Trigonal/Hexagonal-P', # 5
+                             'Tetragonal-I', 'Tetragonal-P', 'Orthorhombic-F', 'Orthorhombic-I', 'Orthorhombic-A', # 5
                              'Orthorhombic-B', 'Orthorhombic-C',
                              'Orthorhombic-P', 'Monoclinic-I', 'Monoclinic-A', 'Monoclinic-C', 'Monoclinic-P',
                              'Triclinic']
@@ -1524,12 +1774,12 @@ class XRD(Methods_Base):
                                           'x axis': Paraclass(strings=('q',['q','2th','d'])),
                                           'clip head': Paraclass(values=(0,0,1000,1)),
                                           'clip tail': Paraclass(values=(1, 1, 1000, 1)),
-                                          'Savitzky-Golay window': Paraclass(values=(11,3,101,2)),
-                                          'Savitzky-Golay order': Paraclass(values=(1,1,2,1)),
-                                          'peak prominence min': Paraclass(values=(0,0,1e2,.1)),
-                                          'peak prominence max': Paraclass(values=(1e4,1e2,1e4,1)),
-                                          'peak width min': Paraclass(values=(0,0,9,1)),
-                                          'peak width max': Paraclass(values=(20,10,100,1)),
+                                          'Savitzky-Golay window': Paraclass(values=(1,1,101,2)),
+                                          'Savitzky-Golay order': Paraclass(values=(1,1,5,2)),
+                                          'peak prominence min': Paraclass(values=(0,0,100,.1)),
+                                          'peak prominence max': Paraclass(values=(1000,100,10000,10)),
+                                          'peak width min': Paraclass(values=(0,0,20,1)),
+                                          'peak width max': Paraclass(values=(20,10,1000,1)),
                                           'window length': Paraclass(values=(101,10,1000,2))},
                            # these parameters are special: they do not call data_process.
                            # change them also in ShowData.update_parameters!
@@ -1540,9 +1790,11 @@ class XRD(Methods_Base):
                                            'gap y tol.': Paraclass(values=(1,1,20,1)),
                                            'gap x tol.': Paraclass(values=(1,1,100,1)),
                                            'min time span': Paraclass(values=(5,1,50,1)),
+                                           '1st deriv control': Paraclass(values=(5,1,100,.1)), # x is pixel number for a peak?
                                            'max diff time span': Paraclass(values=(5,0,50,1)),
                                            'max diff start time': Paraclass(values=(3,0,50,1)),
                                            'symbol size': Paraclass(values=(1,1,20,1)),
+                                           'single peak int. width': Paraclass(values=(2,.1,20,.05)),
                                            'phases': Paraclass(strings=('choose a phase',
                                                                         ['choose a phase','phase1','phase2','phase3',
                                                                          'phase4','phase5','phase6','phase7','phase8',
@@ -1552,21 +1804,34 @@ class XRD(Methods_Base):
                            #                        'x axis': Paraclass(strings=('q',['q','2th','d']))}
                            }
         self.actions = {'integrated':{"interpolate along q": self.interpolate_data,
-                                      "find peaks (Ctrl+F)": self.find_peak_all},
-                       'time series':{'update range': self.update_range,
+                                      "find peaks for all (Ctrl+F)": self.find_peak_all,
+                                      'clear peaks (Ctrl+P)': self.clear_reflections},
+                       'time series':{'update y,z range (Ctrl+0)': self.update_range,
                                       "clear rainbow map (Ctrl+E)": self.show_clear_ts,
-                                      "range start (Ctrl+R)": self.range_select,
+                                      "select start (Ctrl+R)": self.range_select,
                                       "catalog peaks (Ctrl+T)": self.catalog_peaks,
                                       "assign phases (Ctrl+A)": self.assign_phases,
                                       "clear peaks (Ctrl+P)": self.show_clear_peaks,
-                                      "index phases (Ctrl+I)": self.index_phases}} # button name and function name
+                                      "index phases (Ctrl+I)": self.index_phases,
+                                      'add ref. phase (Ctrl+2)': self.add_ref_phase,
+                                      'save peaks/phases (Ctrl+H)': self.save_peaks_phases,
+                                      'load peaks/phases (Ctrl+J)': self.load_peaks_phases,
+                                      'pick single peak for int. (Ctrl+Q)': self.single_peak_int},
+                        'single peak int.':{'update (Ctrl+U)': self.single_peak_update}} # button name and function name
 
         self.linedit = {'time series': {'y min':'0',
                                         'y max': '100',
-                                        'range start': '100',
-                                        'range end': '200',
+                                        'select start': '100',
+                                        'select end': '200',
                                         'exclude from':'0',
-                                        'exclude to':'0'}}
+                                        'exclude to':'0',
+                                        'assign proximity x':'5',
+                                        'assign proximity y':'2',
+                                        'ref. phase 1':'TOPAS_local_gof_vol_unindex_1_0',
+                                        'ref. phase 2':''},
+                        'raw':{'color max':'2.5'},
+                        'single peak int.':{'phase 1 peak pos. (<font> &#8491; </font>)':'5.9119',
+                                            'phase 2 peak pos. (<font> &#8491; </font>)':'6.3621'}}
 
         self.pre_ts_btn_text = 'Do Batch Integration(Ctrl+D)'
         energy = ev2nm / self.wavelength * 10 / 1000
@@ -1575,11 +1840,162 @@ class XRD(Methods_Base):
         self.entrytimesec = []
         self.cells_sort = {}
 
+        # glitches in q
+        self.glitches = [[1.94804, 1.95192],
+                         [2.41443, 2.41831]]  # based on reading on plot
+        # ref
+        self.ref_phase = {'FAPbI3': {'color': 'y',  # no black color, light color is better
+                                     'Bravais': 2,
+                                     'cell': np.array([6.3621, 6.3621, 6.3621, 90, 90, 90])},
+                          # 'MAPbBr3': {'color': 'r',  # drawing color
+                          #             'Bravais': 2,  # choose from self.bravaisNames
+                          #             'cell': np.array([5.9119, 5.9119, 5.9119, 90, 90, 90])},
+                          }
+        # ref 1:
+        # The phase diagram of a mixed halide (Br, I) hybrid perovskite obtained by synchrotron X-ray diffraction†
+        # Frederike Lehmann, *ab Alexandra Franz,a Daniel M. Tobbens, ¨ a Sergej Levcenco,a Thomas Unold,a Andreas Taubertb and Susan Schorrac
+        # ref 2:
+        # Cubic Perovskite Structure of Black Formamidinium Lead Iodide, α‑[HC(NH2)2]PbI3, at 298 K
+        # Mark T. Weller,* Oliver J. Weber, Jarvist M. Frost, and Aron Walsh
+        for phase in self.ref_phase:
+            self.availablecurves['time series'].append(phase)
+
         if os.path.isfile(self.exportfile):
             try:
                 self.read_intg() # read in data at the beginning
             except:
                 print('redo the integration!')
+
+        # assign to peak X by right click
+        self.peak_ass_from = []
+        self.peak_ass_to = []
+        # to add/do:
+        # delete peaks function by right click
+        # multi select peaks to assign from
+
+        # assign to phase X by right click
+        self.phase_ass_from = []
+        self.phase_ass_to = []
+        self.single_peak = []
+
+    def single_peak_int(self, winobj):
+        widgetname_1 = 'pick single peak for int. (Ctrl+Q)'
+        widgetname_2 = 'single peak int. (Ctrl+Q)'
+        tempwidget = self.actwidgets['time series'][widgetname_1]
+        pw = winobj.gdockdict[self.method_name].tabdict['time series'].tabplot
+        pw.scene().sigMouseClicked.connect(lambda evt, p=pw: self.single_peak_select(evt, p))
+        if tempwidget.text() == widgetname_1:
+            tempwidget.setText(widgetname_2)
+            tempwidget.setShortcut('Ctrl+Q')
+        else:
+            tempwidget.setText(widgetname_1)
+            tempwidget.setShortcut('Ctrl+Q')
+            pw.scene().sigMouseClicked.disconnect()
+            if not self.checksdict['single peak int.'].isChecked():
+                self.checksdict['single peak int.'].setChecked(True)
+
+            if hasattr(self, 'peaks_all') and self.single_peak != []:
+                peaks = np.array(self.peaks_catalog_select[self.single_peak]) # y, x, ?, entry, k
+                width_factor = self.parameters['time series']['single peak int. width'].setvalue
+                # q_start = int(self.parameters['integrated']['clip head'].setvalue)
+                single_peak_info = []
+                for index in range(peaks.shape[0]):# double check
+                    single_peak_info.append([])
+                    peak_start = int(peaks[index,1] - width_factor * abs(peaks[index,1] -
+                                         self.peaks_properties_all[peaks[index,3]]['left_ips'][peaks[index,4]]))
+                    peak_end = int(peaks[index,1] + width_factor * abs(peaks[index,1] -
+                                         self.peaks_properties_all[peaks[index,3]]['right_ips'][peaks[index,4]]))
+
+                    d = 2 * np.pi / self.intqaxis[peaks[index,1]]
+                    d1 = float(self.linewidgets['single peak int.']['phase 1 peak pos. (<font> &#8491; </font>)'].text())
+                    d2 = float(self.linewidgets['single peak int.']['phase 2 peak pos. (<font> &#8491; </font>)'].text())
+                    fraction = abs(d - d2) / abs(d2 - d1)
+                    sg_win = int(self.parameters['integrated']['Savitzky-Golay window'].setvalue)
+                    sg_order = int(self.parameters['integrated']['Savitzky-Golay order'].setvalue)
+                    q_start = int(self.parameters['integrated']['clip head'].setvalue)
+                    q_ending = int(self.parameters['integrated']['clip tail'].setvalue)
+                    smoothed = scipy.signal.savgol_filter(self.intdata_ts[peaks[index,0]][q_start: -q_ending], sg_win, sg_order)
+                    int_sum = sum(smoothed[peak_start:peak_end])
+                    # int_sum = sum(self.intdata_ts[peaks[index, 0]][peak_start:peak_end])
+                    bkg = (smoothed[peak_start] + smoothed[peak_end]) * (peak_end - peak_start) / 2
+                    # center of mass
+                    k = (smoothed[peak_end - 1] - smoothed[peak_start]) / (peak_end - peak_start)
+                    bkg_array = np.arange(0, peak_end - peak_start) * k + smoothed[peak_start]
+                    center = (int_sum - bkg_array) * 2 * np.pi / self.intqaxis[peak_start + q_start:peak_end + q_start]
+                    center = center.sum() / (int_sum - bkg_array).sum()
+                    center_frac = abs(center - d2) / abs(d2 - d1)
+                    single_peak_info[-1] = [peaks[index, 0], peak_start, peak_end, d, fraction,
+                                            center, center_frac, int_sum - bkg, 0]
+
+                self.single_peak_info = np.array(single_peak_info)
+                self.single_peak_info[:,-1] = self.single_peak_info[:,-2] / max(self.single_peak_info[:,-2])
+                # y, d, fraction, int., norm int.
+
+    def single_peak_select(self, evt, pw):
+        if pw.sceneBoundingRect().contains(evt.scenePos()):
+            mouse_point = pw.vb.mapSceneToView(evt.scenePos())  # directly, we have a viewbox!!!
+            # the following could be made into a function
+            # x and y are all data number, x is not actuall x!
+            peak_x = mouse_point.x()
+            peak_y = mouse_point.y()
+            # the following could be problematic: what if there is no integrated checkbox checked?!
+            q_start = int(self.parameters['integrated']['clip head'].setvalue)  # q is also data num
+            # peak catalog step
+            if hasattr(self, 'peaks_catalog_select'):
+                if self.peaks_catalog_map != []:
+                    index = 0
+                    for peak in self.peaks_catalog_select:
+                        diff_x = abs(peak[::, 1] - (peak_x - q_start))
+                        diff_y = abs(peak[::, 0] - peak_y)
+                        if min(diff_x) < int(self.linewidgets['time series']['assign proximity x'].text()) and \
+                                min(diff_y) < int(self.linewidgets['time series']['assign proximity y'].text()):
+                            self.single_peak = index
+                            print('find peak {} to integrate'.format(index))
+                            break
+
+                        index += 1
+
+    def single_peak_update(self, winobj):
+        pw = winobj.gdockdict[self.method_name].tabdict['single peak int.'].tabplot
+        curves = self.availablecurves['single peak int.']
+        symbols = ['x', 'o', 't', 's', 'h', 'p']
+        colors = ['r', 'g', 'b', 'm', 'c', 'k']
+        for index in reversed(range(len(pw.items))):  # shocked!
+            if isinstance(pw.items[index], pg.PlotDataItem): # pg.PlotCurveItem):
+                if pw.items[index].name() in curves:
+                    pw.removeItem(pw.items[index])
+
+        if hasattr(self, 'single_peak_info'):
+            for curve in curves:
+                if self.curvedict['single peak int.'][curve].isChecked():
+                    index = curves.index(curve)
+                    pw.plot(self.single_peak_info[:,0], self.single_peak_info[:, index + 3],
+                            symbol=symbols[index], symbolSize=10, name=curve, pen=pg.mkPen(colors[index], width=5))
+
+    def single_peak_width(self, winobj):
+        pw = winobj.gdockdict[self.method_name].tabdict['time series'].tabplot
+        q_start = int(self.parameters['integrated']['clip head'].setvalue)  # q is also data num
+        for index in reversed(range(len(pw.items))):  # shocked!
+            if isinstance(pw.items[index], pg.PlotDataItem): # pg.PlotCurveItem):
+                if pw.items[index].name() in ['left_ips','right_ips']:
+                    pw.removeItem(pw.items[index])
+
+        if hasattr(self, 'peaks_all') and self.single_peak != []:
+            peaks = np.array(self.peaks_catalog_select[self.single_peak])  # y, x, ?, entry, k
+            width_factor = self.parameters['time series']['single peak int. width'].setvalue
+            peak_start = []
+            peak_end = []
+            for index in range(peaks.shape[0]):
+                peak_start.append(int(peaks[index, 1] - width_factor * abs(peaks[index, 1] -
+                    self.peaks_properties_all[peaks[index, 3]]['left_ips'][peaks[index, 4]])))
+                peak_end.append(int(peaks[index, 1] + width_factor * abs(peaks[index, 1] -
+                    self.peaks_properties_all[peaks[index, 3]]['right_ips'][peaks[index, 4]])))
+
+            peak_start = np.array(peak_start)
+            peak_end = np.array(peak_end)
+            pw.plot(peak_start + q_start, peaks[:, 0], pen=pg.mkPen('w', width=5), name='left_ips')
+            pw.plot(peak_end + q_start, peaks[:, 0], pen=pg.mkPen('w', width=5), name='right_ips')
+            # return peak_start, peak_end
 
     def integrate_Cluster(self, ponifile_short, clusterfile):
         clusterfolder = '/data/visitors/' + self.directory.replace(os.sep, '/').replace('//', '/')[2::]
@@ -1627,6 +2043,16 @@ class XRD(Methods_Base):
             if 'y min' in list(f.keys()):
                 self.y_range = [f['y min'][()], f['y max'][()]]
 
+        if hasattr(self, 'glitches'):
+            try:
+                for glitch in self.glitches:
+                    glitch_start = np.where(self.intqaxis - glitch[0] < 0)[0][-1]
+                    glitch_end = np.where(self.intqaxis - glitch[1] > 0)[0][0]
+                    self.intqaxis = np.delete(self.intqaxis, np.s_[glitch_start:glitch_end])
+                    self.intdata_ts = np.delete(self.intdata_ts, np.s_[glitch_start:glitch_end], axis=1)
+            except:
+                print('redo the integration, may be caused by an incorrect first data in xas4xrd file')
+
     def output_intg(self, q, result, norm_result, wavelength, interval):
         if not os.path.isdir(self.exportdir): os.mkdir(self.exportdir)
         resultfile = h5py.File(self.exportfile, 'w')
@@ -1648,25 +2074,26 @@ class XRD(Methods_Base):
         # to densify data along q to make following peaks cataloguing more effective incase q is not enough
         pass
 
-    def find_peak_all(self, winobj):
+    def find_peak_all(self, winobj): # only works in q right now; 1st step
         q_start = int(self.parameters['integrated']['clip head'].setvalue)
         q_ending = int(self.parameters['integrated']['clip tail'].setvalue)
         peaks_q = []
         peaks_number = []
         self.peaks_index = [] # data number for each data where you can find some peaks, for this reason delta y should be based on this
-        self.peaks_all = []
+        self.peaks_all = [] # x positions of all peaks within each xrd data, and for all xrd data
         self.peaks_properties_all = []
         for index in range(self.entrytimesec.shape[0]):
             intdata_clipped = self.intdata_ts[index][q_start: -q_ending]
             if 'smoothed' in self.curve_timelist[0]['integrated']:
-                self.intdata_smoothed = \
-                    scipy.signal.savgol_filter(intdata_clipped,
-                                               int(self.parameters['integrated']['Savitzky-Golay window'].setvalue),
-                                               int(self.parameters['integrated']['Savitzky-Golay order'].setvalue))
+                sg_win = int(self.parameters['integrated']['Savitzky-Golay window'].setvalue)
+                sg_order = int(self.parameters['integrated']['Savitzky-Golay order'].setvalue)
+                if sg_win > sg_order + 1:
+                    self.intdata_smoothed = scipy.signal.savgol_filter(intdata_clipped,sg_win, sg_order)
 
             if hasattr(self, 'intdata_smoothed'):
                 peaks, peak_properties = self.find_peak_conditions(self.intdata_smoothed)
-            else: peaks, peak_properties = self.find_peak_conditions(intdata_clipped)
+            else:
+                peaks, peak_properties = self.find_peak_conditions(intdata_clipped)
 
             if peaks is not []:
                 self.peaks_index.append(index)
@@ -1674,14 +2101,18 @@ class XRD(Methods_Base):
                 self.peaks_properties_all.append(peak_properties)
                 for sub_index in range(len(peaks)):
                     peaks_q.append(peaks[sub_index]) # x, index
-                    peaks_number.append(index)            # y, index
+                    peaks_number.append(index)            # y, index in 2D contour plot
 
+        self.find_peak_plot(peaks_q, peaks_number, winobj)
+
+    def find_peak_plot(self, peaks_q, peaks_number, winobj):
         if not hasattr(self, 'peak_map'):
             if 'time series' not in winobj.gdockdict[self.method_name].tabdict:
                 self.checksdict['time series'].setChecked(True)
 
             self.peak_map = winobj.gdockdict[self.method_name].tabdict['time series'].tabplot.plot(name='find peaks')
 
+        # draw all peak positions overlap with 2D contour plot.
         self.peak_map.setData(np.array(peaks_q) + self.parameters['integrated']['clip head'].setvalue, peaks_number,
                               symbol='o', symbolPen='k', pen=None, symbolBrush=None,
                               symbolSize=self.parameters['time series']['symbol size'].setvalue)
@@ -1700,6 +2131,18 @@ class XRD(Methods_Base):
             tempwidget.setShortcut('Ctrl+E')
             self.plot_from_load(winobj)
 
+    def clear_reflections(self, winobj):
+        pw = winobj.gdockdict[self.method_name].tabdict['integrated'].tabplot
+        # clear plots
+        for index in reversed(range(len(pw.items))):  # shocked!
+            if isinstance(pw.items[index], pg.PlotDataItem):
+                if pw.items[index].name()[0:4] in ['inde', 'ref.']:
+                    pw.removeItem(pw.items[index])
+
+        # clear text
+        for index in reversed(range(len(pw.items))):  # shocked! must do this, forward order makes a mess!
+            if isinstance(pw.items[index], pg.TextItem): pw.removeItem(pw.items[index])
+
     def show_clear_peaks(self, winobj):
         pw = winobj.gdockdict[self.method_name].tabdict['time series'].tabplot
         tempwidget = self.actwidgets['time series']['clear peaks (Ctrl+P)']
@@ -1708,7 +2151,13 @@ class XRD(Methods_Base):
             tempwidget.setShortcut('Ctrl+P')
             for index in reversed(range(len(pw.items))): # shocked!
                 if isinstance(pw.items[index], pg.PlotDataItem):
-                    if pw.items[index].name()[0:4] in ['find', 'cata', 'assi']: pw.removeItem(pw.items[index])
+                    if pw.items[index].name()[0:4] in ['find', 'cata', 'assi', 'phas', 'inde', 'ref.']:
+                        pw.removeItem(pw.items[index])
+
+            # delete old text
+            for index in reversed(range(len(pw.items))):  # shocked! must do this, forward order makes a mess!
+                if isinstance(pw.items[index], pg.TextItem): pw.removeItem(pw.items[index])
+                    # if pw.items[index].color == fn.mkColor(color): pw.removeItem(pw.items[index])
                         
         else:
             tempwidget.setText('clear peaks (Ctrl+P)')
@@ -1730,16 +2179,17 @@ class XRD(Methods_Base):
         if hasattr(self, 'phases_map') and phase_name != 'choose a phase': # shock! must use string compare
             if int(phase_name[5:]) <= len(self.phases):
                 pw.addItem(self.phases_map[int(phase_name[5:]) - 1])
+                # print('showing phase')
 
     def range_select(self, winobj):
         # to select range for peaks sorting
         pw = winobj.gdockdict[self.method_name].tabdict['time series'].tabplot
-        tempwidget = self.actwidgets['time series']['range start (Ctrl+R)']
+        tempwidget = self.actwidgets['time series']['select start (Ctrl+R)']
         pw.scene().sigMouseClicked.connect(lambda evt, p=pw: self.range_clicked(evt, p))
-        if tempwidget.text() == 'range start (Ctrl+R)':
-            tempwidget.setText('range end (Ctrl+R)')
+        if tempwidget.text() == 'select start (Ctrl+R)':
+            tempwidget.setText('select end (Ctrl+R)')
             tempwidget.setShortcut('Ctrl+R')
-        elif tempwidget.text() == 'range end (Ctrl+R)':
+        elif tempwidget.text() == 'select end (Ctrl+R)':
             tempwidget.setText('exclude from (Ctrl+R)')
             tempwidget.setShortcut('Ctrl+R')
         elif tempwidget.text() == 'exclude from (Ctrl+R)':
@@ -1749,27 +2199,26 @@ class XRD(Methods_Base):
             tempwidget.setText('done (Ctrl+R)')
             tempwidget.setShortcut('Ctrl+R')
         else:
-            tempwidget.setText('range start (Ctrl+R)')
+            tempwidget.setText('select start (Ctrl+R)')
             tempwidget.setShortcut('Ctrl+R')
             pw.scene().sigMouseClicked.disconnect()
 
     def range_clicked(self, evt, pw):
         if pw.sceneBoundingRect().contains(evt.scenePos()):
             mouse_point = pw.vb.mapSceneToView(evt.scenePos()) # directly, we have a viewbox!!!
-            temptext = self.actwidgets['time series']['range start (Ctrl+R)'].text()
-            if temptext == 'range end (Ctrl+R)':
-                self.linewidgets['time series']['range start'].setText(str(int(mouse_point.y())))
+            temptext = self.actwidgets['time series']['select start (Ctrl+R)'].text()
+            if temptext == 'select end (Ctrl+R)':
+                self.linewidgets['time series']['select start'].setText(str(int(mouse_point.y())))
             elif temptext == 'exclude from (Ctrl+R)':
-                self.linewidgets['time series']['range end'].setText(str(int(mouse_point.y())))
+                self.linewidgets['time series']['select end'].setText(str(int(mouse_point.y())))
             elif temptext == 'exclude to (Ctrl+R)':
                 self.linewidgets['time series']['exclude from'].setText(str(int(mouse_point.y())))
             else:
                 self.linewidgets['time series']['exclude to'].setText(str(int(mouse_point.y())))
 
-    def catalog_peaks(self, winobj):
-        pw = winobj.gdockdict[self.method_name].tabdict['time series'].tabplot
-        i_start = self.linewidgets['time series']['range start'].text()
-        i_end = self.linewidgets['time series']['range end'].text()
+    def catalog_peaks(self, winobj): # 2nd step
+        i_start = self.linewidgets['time series']['select start'].text()
+        i_end = self.linewidgets['time series']['select end'].text()
         i_ex_start = self.linewidgets['time series']['exclude from'].text()
         i_ex_end = self.linewidgets['time series']['exclude to'].text()
 
@@ -1779,8 +2228,8 @@ class XRD(Methods_Base):
             i_ex_start = np.where(np.array(self.peaks_index) - int(i_ex_start) >= 0)[0][0]
             i_ex_end = np.where(np.array(self.peaks_index) - int(i_ex_end) >= 0)[0][0]
 
-        i_start = np.min([i_start, i_end])  # to prevent disorder
-        i_end = np.max([i_start, i_end])
+        # i_start = np.min([i_start, i_end])  # to prevent disorder
+        # i_end = np.max([i_start, i_end])
         if i_start < i_ex_start < i_ex_end < i_end: # to insure the correct order
             peaks_index_sel = self.peaks_index[i_start:i_ex_start] + self.peaks_index[i_end:i_ex_end]
         else:
@@ -1789,110 +2238,228 @@ class XRD(Methods_Base):
 
         # start cataloging peaks, the most exciting part
         if peaks_index_sel != []:
-            pw.setYRange(i_start, i_end)
             self.peaks_catalog = []
-            for index in range(len(self.peaks_all[i_start])):
-                # first level: peaks; second level: index in y in full data, index in x in full data, index in peaks_index_sel
-                self.peaks_catalog.append([[self.peaks_index[i_start],self.peaks_all[i_start][index], 0]])
+            for index in range(len(self.peaks_all[i_start])): # start from the first data in selected region
+                # first level: peaks; second level: index in y in full data, index in x in full data (excl. clipped head), index in peaks_index_sel
+                self.peaks_catalog.append([[self.peaks_index[i_start],self.peaks_all[i_start][index], 0, i_start, index]])
 
             gap_y = int(self.parameters['time series']['gap y tol.'].setvalue)
             gap_x = int(self.parameters['time series']['gap x tol.'].setvalue)
 
-            for index in range(len(peaks_index_sel)): # index on data number peaks selected (self.peaks_index)
+            for index in range(len(peaks_index_sel) - 1): # index on data number peaks selected (self.peaks_index)
                 # for j in range(min([gap_y, i_end - index])): # index on gap_y tolerence
-                entry = self.peaks_index.index(peaks_index_sel[index])
-                search_range = len(self.peaks_catalog)
+                index = index + 1
+                entry = self.peaks_index.index(peaks_index_sel[index]) # the next available data index
+                search_range = len(self.peaks_catalog) # search through each established peak catalog
                 for k in range(len(self.peaks_all[entry])): # index on all peaks detected within one data
                     add_group = [] # indicator whether to add a new peaks group or not
                     for i in range(search_range): # index on existing peaks groups, this one is constantly changing!!!
-                        # the following condition is very tricky in y direction, it has to be [2] not [0]
+                        # the following condition is very tricky in y direction, it needs to be [2] not [0] of self.peak_catalog[i][-1]
                         if np.abs(self.peaks_all[entry][k] - self.peaks_catalog[i][-1][1]) <= gap_x and \
                             np.abs(index - self.peaks_catalog[i][-1][2]) <= gap_y: # add to existing peaks group
                             self.peaks_catalog[i].append([self.peaks_index[entry],
-                                                          self.peaks_all[entry][k], index]) # data number (y,x)
-                            add_group.append(1)
+                                                          self.peaks_all[entry][k], index, entry, k])
+                            # data number y, x, index in peaks_index_sel, data number _0 in peaks_all (very similar to y) and _1
+                            add_group.append(1) # 1 means not to add new group
                         else: add_group.append(0)
 
                     if np.sum(add_group) == 0: # add a new catalog if this peak belongs to no old catalogs
                         self.peaks_catalog.append([[self.peaks_index[entry],
-                                                    self.peaks_all[entry][k], index]])
+                                                    self.peaks_all[entry][k], index, entry, k]])
 
-            # show peaks
+            # show peaks that are longer-lasting in time, i.e. life span larger than lenght_limit
             length_limit = self.parameters['time series']['min time span'].setvalue
-            if hasattr(self, 'peaks_catalog_map'): # clear the old plot
-                for index in range(len(self.peaks_catalog_map)):
-                    pw.removeItem(self.peaks_catalog_map[index])
-
-            if hasattr(self, 'phases_map'): # clear the old plot
-                for index in range(len(self.phases_map)):
-                    pw.removeItem(self.phases_map[index])
-
-                self.phases_map = []
-
-            self.peaks_catalog_select = [] # peak number, data number (y,x)
+            self.peaks_catalog_select = [] # peak number, data number (y,x); still, you need q_start
             for index in range(len(self.peaks_catalog)):
                 self.peaks_catalog[index] = np.array(self.peaks_catalog[index])
                 if self.peaks_catalog[index].shape[0] > length_limit:
-                    self.peaks_catalog_select.append(self.peaks_catalog[index])
+                    diff_average = np.average(abs(np.diff(self.peaks_catalog[index][::, 1]))) # dx only
+                    # diff_average = np.average(abs(np.diff(self.peaks_catalog[index][::,1]) /
+                    #                               np.diff(self.peaks_catalog[index][::,0]))) # dx / dy
+                    # a real peak will have a smaller diff_average, for a fake peak, it appears more waggled, hence larger diff_average
+                    if diff_average < float(self.parameters['time series']['1st deriv control'].setvalue):
+                        self.peaks_catalog_select.append(self.peaks_catalog[index])
 
-            self.peaks_catalog_map = [None] * len(self.peaks_catalog_select)
-            q_start = int(self.parameters['integrated']['clip head'].setvalue)
+            # merge peaks
+            peak_to_pop = []
+            for i in range(len(self.peaks_catalog_select) - 1):
+                for j in np.arange(i + 1, len(self.peaks_catalog_select)):
+                    merged = np.unique(np.concatenate((self.peaks_catalog_select[i],self.peaks_catalog_select[j]),axis=0), axis=0)
+                    if merged.shape[0] < self.peaks_catalog_select[i].shape[0] + self.peaks_catalog_select[j].shape[0]:
+                        self.peaks_catalog_select[j] = merged
+                        peak_to_pop.append(i)
+                        print('peak {} and peak {} will be merged'.format(i,j))
+
+            # this is cool: list comprehensions, all other methods is incorrect (pop remove del)... not a good way either!!!
+            # self.peaks_catalog_select = [peak for peak in self.peaks_catalog_select if not self.peaks_catalog_select.index(peak) in peak_to_pop]
+            peaks = []
             for index in range(len(self.peaks_catalog_select)):
-                color = pg.intColor(index * self.huestep, 100)
-                self.peaks_catalog_map[index] = \
-                    pw.plot(name='catalog peaks' + ' ' + str(index))
-                self.peaks_catalog_map[index].setData(self.peaks_catalog_select[index][::,1] + q_start,
-                                                  self.peaks_catalog_select[index][::,0], symbol='o', symbolBrush=color,
+                if index not in peak_to_pop:
+                    peaks.append(self.peaks_catalog_select[index])
+
+            self.peaks_catalog_select = peaks
+
+            self.catalog_peaks_plot(winobj)
+
+    def catalog_peaks_plot(self, winobj):
+        pw = winobj.gdockdict[self.method_name].tabdict['time series'].tabplot
+        # delete old plot and draw new ones
+        if hasattr(self, 'peaks_catalog_map'):  # clear the old plot
+            for index in range(len(self.peaks_catalog_map)):
+                pw.removeItem(self.peaks_catalog_map[index])
+
+        if hasattr(self, 'phases_map'):  # clear the old plot
+            for index in range(len(self.phases_map)):
+                pw.removeItem(self.phases_map[index])
+
+            self.phases_map = []
+
+        self.peaks_catalog_map = [None] * len(self.peaks_catalog_select)
+        q_start = int(self.parameters['integrated']['clip head'].setvalue)
+        self.peaks_color = []
+        i_start = min([min(self.peaks_catalog_select[index][:,0]) for index in range(len(self.peaks_catalog_select))])
+        i_end = max([max(self.peaks_catalog_select[index][:, 0]) for index in range(len(self.peaks_catalog_select))])
+        self.linewidgets['time series']['y min'].setText(str(i_start))
+        self.linewidgets['time series']['y max'].setText(str(i_end))
+        pw.setYRange(i_start, i_end)
+        for index in range(len(self.peaks_catalog_select)):
+            color = pg.intColor(index * self.huestep, 100)
+            self.peaks_color.append(color)
+            self.peaks_catalog_map[index] = \
+                pw.plot(name='catalog peaks {}'.format(index))
+            self.peaks_catalog_map[index].setData(self.peaks_catalog_select[index][::, 1] + q_start,
+                                                  self.peaks_catalog_select[index][::, 0], symbol='o',
+                                                  symbolBrush=color,
                                                   symbolSize=self.parameters['time series']['symbol size'].setvalue)
 
+    def save_peaks_phases(self, winobj):
+        tempwidget = self.actwidgets['time series']['save peaks/phases (Ctrl+H)']
+        if tempwidget.text() == 'save peaks/phases (Ctrl+H)': # save peaks found
+            tempwidget.setText('save peaks catalogued (Ctrl+H)')
+            tempwidget.setShortcut('Ctrl+H')
+            if all(hasattr(self, attribute) for attribute in ['peaks_index', 'peaks_all', 'peaks_properties_all']):
+                with open(os.path.join(self.exportdir, self.fileshort + '_peaks'), 'wb') as f:
+                    pickle.dump([self.peaks_index, self.peaks_all, self.peaks_properties_all], f)
+
+        elif tempwidget.text() == 'save peaks catalogued (Ctrl+H)': # save peaks catalogued
+            tempwidget.setText('save phases catalogued (Ctrl+H)')
+            tempwidget.setShortcut('Ctrl+H')
+            if hasattr(self, 'peaks_catalog_select'):
+                with open(os.path.join(self.exportdir, self.fileshort + '_peaks_catalog_select'), 'wb') as f:
+                    pickle.dump(self.peaks_catalog_select, f)
+
+        else: # save phases
+            tempwidget.setText('save peaks/phases (Ctrl+H)')
+            tempwidget.setShortcut('Ctrl+H')
+            if hasattr(self,'phases'):
+                with open(os.path.join(self.exportdir, self.fileshort + '_phases'), 'wb') as f:
+                    pickle.dump(self.phases, f)
+
+    def load_peaks_phases(self, winobj):
+        tempwidget = self.actwidgets['time series']['load peaks/phases (Ctrl+J)']
+        if tempwidget.text() == 'load peaks/phases (Ctrl+J)': # load peaks found
+            tempwidget.setText('load peaks catalogued (Ctrl+J)')
+            tempwidget.setShortcut('Ctrl+J')
+            peaks_file = os.path.join(self.exportdir, self.fileshort + '_peaks')
+            if os.path.isfile(peaks_file):
+                with open(peaks_file, 'rb') as f:
+                    self.peaks_index, self.peaks_all, self.peaks_properties_all = pickle.load(f)
+
+            # draw all peaks
+            peaks_q = []  # x
+            peaks_number = []  # y
+            for index in self.peaks_index:  # y
+                for sub_index in self.peaks_all[index]:  # x
+                    peaks_q.append(sub_index)
+                    peaks_number.append(index)
+
+            try: self.find_peak_plot(peaks_q, peaks_number, winobj)
+            except: print('what is wrong with find peak plot?')
+
+        elif tempwidget.text() == 'load peaks catalogued (Ctrl+J)': # load peaks catalogued
+            tempwidget.setText('load phases catalogued (Ctrl+J)')
+            tempwidget.setShortcut('Ctrl+J')
+            pcs_file = os.path.join(self.exportdir, self.fileshort + '_peaks_catalog_select')
+            if os.path.isfile(pcs_file):
+                with open(pcs_file, 'rb') as f:
+                    self.peaks_catalog_select = pickle.load(f)
+
+            try: self.catalog_peaks_plot(winobj)
+            except: print('what is wrong with catalog peaks plot?')
+
+        else: # load phases
+            tempwidget.setText('load peaks/phases (Ctrl+J)')
+            tempwidget.setShortcut('Ctrl+J')
+            phases_file = os.path.join(self.exportdir, self.fileshort + '_phases')
+            if os.path.isfile(phases_file):
+                with open(phases_file, 'rb') as f:
+                    self.phases = pickle.load(f)
+
+            try: self.assign_phases_plot(winobj)
+            except: print('what is wrong with assign phases plot?')
+
     def assign_phases(self, winobj):
-        pw = winobj.gdockdict[self.method_name].tabdict['time series'].tabplot
         if hasattr(self, 'peaks_catalog_select'):
             time_diff = self.parameters['time series']['max diff time span'].setvalue
             start_diff = self.parameters['time series']['max diff start time'].setvalue
-            self.phases = [[0]] # peak 0 belong to phase 0
+            self.phases = [[0]] # peak 0 belong to phase 0, next is peak 1; self.phases stores peak numbers for each phase
+            # before assign phases, make sure that each peak is ordered in y direction, i.e. to peak_catalog_select[:,0]
             for index in range(len(self.peaks_catalog_select) - 1):
+                # self.peaks_catalog_select[index + 1] = \
+                #     self.peaks_catalog_select[index + 1][self.peaks_catalog_select[index + 1][:,0].argsort()]
                 add_group = []
                 for k in range(len(self.phases)):
                     time_span_index = np.abs(self.peaks_catalog_select[index + 1][-1][0] - \
-                                      self.peaks_catalog_select[index + 1][0][0])
+                                      self.peaks_catalog_select[index + 1][0][0]) # time span in actual y number
                     time_span_k = np.abs(self.peaks_catalog_select[self.phases[k][-1]][-1][0] - \
-                                  self.peaks_catalog_select[self.phases[k][-1]][0][0])
+                                  self.peaks_catalog_select[self.phases[k][-1]][0][0]) # time span in already established phases
                     time_start_index = self.peaks_catalog_select[index + 1][0][0]
                     time_start_k = self.peaks_catalog_select[self.phases[k][-1]][0][0]
                     if time_diff > np.abs(time_span_index - time_span_k) and \
-                        start_diff > np.abs(time_start_index - time_start_k):
+                        start_diff > np.abs(time_start_index - time_start_k): # may release the first condition
                         self.phases[k].append(index + 1)
                         add_group.append(1)
+                        break # work?
                     else: add_group.append(0)
 
                 if np.sum(add_group) == 0:
                     self.phases.append([index + 1])
 
-            if hasattr(self, 'phases_map'): # clear the old plot
-                for index in range(len(self.phases_map)):
-                    pw.removeItem(self.phases_map[index])
+            print('{} phases found'.format(len(self.phases)))
+            self.assign_phases_plot(winobj)
 
-            if hasattr(self, 'peaks_catalog_map'):  # clear the old plot
-                for index in range(len(self.peaks_catalog_map)):
-                    pw.removeItem(self.peaks_catalog_map[index])
+    def assign_phases_plot(self, winobj):
+        pw = winobj.gdockdict[self.method_name].tabdict['time series'].tabplot
+        if hasattr(self, 'phases_map'):  # clear the old plot
+            for index in range(len(self.phases_map)):
+                pw.removeItem(self.phases_map[index])
 
-                self.peaks_catalog_map = []
+        if hasattr(self, 'peaks_catalog_map'):  # clear the old plot
+            for index in range(len(self.peaks_catalog_map)):
+                pw.removeItem(self.peaks_catalog_map[index])
 
-            self.phases_map = [None] * len(self.phases)
-            q_start = int(self.parameters['integrated']['clip head'].setvalue)
-            for index in range(len(self.phases)):
-                color = pg.intColor(index * self.huestep, 100)
-                tempdata = self.peaks_catalog_select[self.phases[index][0]]
-                if len(self.phases[index]) > 1:
-                    for k in range(len(self.phases[index]) - 1):
-                        tempdata = np.concatenate((tempdata, self.peaks_catalog_select[self.phases[index][k + 1]])) # another shock!
+            self.peaks_catalog_map = []
 
-                self.phases_map[index] = \
-                    pw.plot(name='assign phases'+ ' ' + str(index))
-                self.phases_map[index].setData(tempdata[::,1] + q_start, tempdata[::,0],
-                                               symbol='d', symbolBrush=color, pen=None,
-                                               symbolSize=self.parameters['time series']['symbol size'].setvalue)
+        self.phases_map = [None] * len(self.phases)
+        q_start = int(self.parameters['integrated']['clip head'].setvalue)
+        self.phases_color = []
+        for index in range(len(self.phases)):
+            temp = self.huestep
+            self.huestep = 7
+            color = pg.intColor(index * self.huestep, 100)
+            self.phases_color.append(color)
+            phase_peaks = self.peaks_catalog_select[self.phases[index][0]]
+            if len(self.phases[index]) > 1:
+                for k in range(len(self.phases[index]) - 1):
+                    phase_peaks = np.concatenate(
+                        (phase_peaks, self.peaks_catalog_select[self.phases[index][k + 1]]))  # another shock!
+
+            self.phases_map[index] = \
+                pw.plot(name='assign phases' + ' ' + str(index))
+            self.phases_map[index].setData(phase_peaks[::, 1] + q_start, phase_peaks[::, 0],
+                                           symbol='d', symbolBrush=color, pen=None,
+                                           symbolSize=self.parameters['time series']['symbol size'].setvalue)
+            self.huestep = temp
 
     def index_phases(self, winobj):
         if hasattr(self, 'phases'):
@@ -1912,23 +2479,23 @@ class XRD(Methods_Base):
                 self.index_win.tabdict[phase_name] = TabGraph_index(phase_name)
                 self.index_win.tabdict[phase_name].gentab(self.index_win, self, winobj)
 
-    def indexing(self, tabobj, winobj):
+    def indexing(self, tabobj, winobj): # this is also a cool part!
         q_start = int(self.parameters['integrated']['clip head'].setvalue)
         phase_num = int(tabobj.label[5:]) # assuming all names are 'phaseXX', so the actual index is phase_num - 1
         phase_d = [] # d_obs of all peaks
         phase_int = [] # intensity of all peaks
         q_peak = [] # q (or x) data number of all peaks
-        common_data = set(range(self.entrytimesec.shape[0] + 1))
+        common_data = set(range(self.entrytimesec.shape[0] + 1)) # this is smart!
         for index in self.phases[phase_num - 1]: # average the d-value, intensity, on common data only!
             peak_data = np.array(self.peaks_catalog_select[index])
             common_data = common_data & set(peak_data[:,0])
 
-        common_data = list(common_data)
+        common_data = list(common_data) # indexing the common data number!
         for index in self.phases[phase_num - 1]: # it is quite certain that everything is in timely order, i.e. sorted
             peak_data = np.array(self.peaks_catalog_select[index])
             peak_data = peak_data[np.searchsorted(peak_data[:,0],common_data),:]
-            q_peak.append(int(peak_data[:,1].sum() / peak_data.shape[0] + q_start)) # average
-            phase_d.append(2 * np.pi / self.intqaxis[q_peak[index]]) # in Angstrom
+            q_peak.append(int(peak_data[:,1].sum() / peak_data.shape[0] + q_start)) # average over the common data number
+            phase_d.append(2 * np.pi / self.intqaxis[q_peak[-1]]) # in Angstrom, d spaces of a phase
             peak_int = 0 # intensity of one peak
             for peak in peak_data:
                 data_num = self.peaks_index.index(peak[0])
@@ -1937,22 +2504,29 @@ class XRD(Methods_Base):
                 peak_int += peak_prop['prominences'][peak_num] * (peak_prop['right_ips'][peak_num] -
                                                                    peak_prop['left_ips'][peak_num]) / 2
 
-            phase_int.append(peak_int / peak_data.shape[0]) # average
+            phase_int.append(peak_int / peak_data.shape[0]) # average peak intensity
 
         # plot the averaged q for each peak for this phase
-        self.plot_reflections(winobj, q_peak, tabobj.label, 't', 0, [])
+        self.plot_reflections(winobj=winobj, positions=q_peak, phase_name=tabobj.label, symbol='t',
+                              offset=0, hkl=[], color=[])
 
         # with open(self.ponifile, 'r') as f:
         #     wavelength = float(f.readlines()[-1].splitlines()[0].partition(' ')[2])
 
-        peaks = []
+        peaks = [] # tth, peak intensity, ... , d space, ...
         for index in range(len(phase_int)):
             peaks.append([np.arcsin(self.wavelength / np.array(phase_d[index]) / 2) * 2 / np.pi * 180,
                           phase_int[index], True, True, 0, 0, 0, phase_d[index], 0])
 
         peaks = np.array(peaks)
         peaks = peaks[peaks[:,0].argsort()]
-        print(peaks)
+        # print(peaks)
+        # output d space and intensity for index
+        d_space_file = os.path.join(self.exportdir, self.fileshort + '_d_space_phase_%i' % phase_num) # the actual phase number is phase_num - 1
+        with open(d_space_file, 'w') as f:
+            np.savetxt(f, peaks[:,[7,1]], '%-10.5f', header='index_d index_I') # must keep the order
+            print('out put d space file for phase %i' % phase_num)
+
         bravais = [0] * len(self.bravaisNames)
         for index in range(tabobj.cbox_layout.count()): # get bravais
             item = tabobj.cbox_layout.itemAt(index).widget()
@@ -1980,25 +2554,67 @@ class XRD(Methods_Base):
 
             tabobj.table.selectionModel().selectionChanged.connect(lambda: self.show_reflections(tabobj, winobj))
 
-    def plot_reflections(self, winobj, positions, phase_name, symbol, offset, hkl): # the first five letters of name must be distinguishable
+    def plot_reflections(self, winobj, positions, phase_name, symbol, offset, hkl, color): # the first five letters of name must be distinguishable
         pw = winobj.gdockdict[self.method_name].tabdict['time series'].tabplot
-        data_center = (int(self.linewidgets['time series']['range start'].text()) +
-                       int(self.linewidgets['time series']['range end'].text())) / 2
+        if color == []: # reflection dots
+            y_start = int(self.linewidgets['time series']['select start'].text())
+            y_end = int(self.linewidgets['time series']['select end'].text())
+
+        elif symbol in ['max', 'min']: # on single data
+            pw = winobj.gdockdict[self.method_name].tabdict['integrated'].tabplot
+            try:
+                if 'smoothed' not in self.curve_timelist[0]['integrated']:
+                    data = self.curve_timelist[0]['integrated']['original'].yData
+                else:
+                    data = self.curve_timelist[0]['integrated']['smoothed'].yData
+
+                y_start = max(data) if symbol == 'max' else min(data) / 2
+                y_end = min(data) if symbol == 'min' else max(data) + min(data) / 2
+            except:
+                print('what is wrong with plot reflection')
+
+        else: # ref_phases
+            y_start = int(self.linewidgets['time series']['y min'].text())
+            y_end = int(self.linewidgets['time series']['y max'].text())
+
+        data_center = (y_start + y_end) / 2
+        y = np.array([data_center] * len(positions))
+        offset = abs(y_end - y_start) * offset
+
+        # delete old plot
         for index in reversed(range(len(pw.items))):  # shocked!
             if isinstance(pw.items[index], pg.PlotDataItem):
-                if pw.items[index].name()[0:5] == phase_name[0:5]: pw.removeItem(pw.items[index])
+                if pw.items[index].name()[0:4] == phase_name[0:4]: pw.removeItem(pw.items[index])
 
-        y = np.array([data_center] * len(positions))
-        offset = abs(int(self.linewidgets['time series']['range start'].text()) -
-                     int(self.linewidgets['time series']['range end'].text())) * offset
-        pw.plot(positions, y - offset, pen=None, symbol=symbol, symbolSize=15, name=phase_name).setZValue(100)
+        if color == []:  # reflection dots
+            pw.plot(positions, y - offset, pen=None, symbol=symbol, symbolSize=15, name=phase_name).setZValue(100)
+            color = 'k'
+        elif symbol in ['max', 'min']: # single data
+            for x in positions:
+                if x < self.intqaxis.shape[0]:
+                    pw.plot([x, x], [y_start, y_end],
+                            pen=pg.mkPen(color, width=1),name=phase_name)
+            for item in winobj.gdockdict[self.method_name].tabdict['integrated'].graphtab.items():  # shocked!
+                if isinstance(item, pg.LegendItem):
+                    for lgd in reversed(item.items):
+                        if lgd[1].text == phase_name:
+                            item.removeItem(lgd[0].item)
 
+        else: # ref_phases
+            for x in positions:
+                if x < self.intqaxis.shape[0]:
+                    # pw.plot([x,x],[0,self.intdata_ts.shape[0]],pen=pg.mkPen(color,width=3),name=phase_name).setZValue(100) # work?
+                    pw.plot([x, x], [(y_start + data_center) / 2, (data_center + y_end) / 2],
+                            pen=pg.mkPen(color, width=3),name=phase_name).setZValue(100)  # work?
+
+        # delete old text
         for index in reversed(range(len(pw.items))):  # shocked!
-            if isinstance(pw.items[index], pg.TextItem): pw.removeItem(pw.items[index])
+            if isinstance(pw.items[index], pg.TextItem):
+                if pw.items[index].color == fn.mkColor(color): pw.removeItem(pw.items[index])
 
         if hkl != []:
             for index in range(hkl.shape[0]):
-                hkl_text = pg.TextItem(str(hkl[index])[1:-1], angle=90, anchor=(1,1), color='k')
+                hkl_text = pg.TextItem(str(hkl[index])[1:-1], angle=90, anchor=(1,1), color=color)
                 pw.addItem(hkl_text)
                 hkl_text.setPos(positions[index], data_center - offset * 2)
                 hkl_text.setZValue(100)
@@ -2010,10 +2626,348 @@ class XRD(Methods_Base):
         Bravais = self.cells_sort[tabobj.label][index][2]
         HKLD = np.array(GSASIIlattice.GenHBravais(dmin, Bravais, A)) # generate [h, k, l, d, -1]
         positions = (2 * np.pi / HKLD[:,3] - self.intqaxis[0]) / (self.intqaxis[-1] - self.intqaxis[0]) * self.intqaxis.shape[0]
-        self.plot_reflections(winobj, positions, 'index_' + str(index), 't1', 0.03, HKLD[:,0:3])
+        self.plot_reflections(winobj, positions, 'index_' + str(index), 't1', 0.03, HKLD[:,0:3], [])
 
     def keep_selected(self, tabobj):
         pass
+
+    def add_ref_phase(self, winobj): # add and delete ref. phase lines
+        tempwidget = self.actwidgets['time series']['add ref. phase (Ctrl+2)']
+        pw = winobj.gdockdict[self.method_name].tabdict['time series'].tabplot
+        dmin = 2 * np.pi / self.intqaxis[-1]
+        if tempwidget.text() == 'add ref. phase (Ctrl+2)':
+            tempwidget.setText('delete ref. phase (Ctrl+2)')
+            tempwidget.setShortcut('Ctrl+2')
+            for line_edit in self.linedit['time series']:
+                if line_edit[0:10] == 'ref. phase':
+                    # add new lines
+                    phase = self.linewidgets['time series'][line_edit].text().split(',')
+                    if phase != ['']:
+                        if len(phase) == 1: # by outsourced index software
+                            try:
+                                phase_num = int(phase[0].split('_')[-1])
+                                index_phase = int(phase[0].split('_')[-2])
+                                index_method, drive, order1, order2, order3 = phase[0].split('_')[0:5]
+                                if drive == 'Z': index_dir = r'Z:'
+                                else: index_dir = self.exportdir
+
+                                ndx_file = os.path.join(index_dir, self.fileshort + '_d_space_phase_%i.ndx' % index_phase)
+                                if index_method == 'TOPAS' and os.path.isfile(ndx_file):
+                                    with open(ndx_file, 'r') as f:
+                                        ndx = f.readlines()
+
+                                    for row in range(20): # judge the start:
+                                        if ndx[row][0:18] == 'Indexing_Solutions': start_num = row + 2
+
+                                    # get 100 phases out and sort them
+                                    ndx = pd.DataFrame([item.split() for item in ndx[start_num:start_num + 100]]) # by gof
+                                    # 3 unindexed, 4 volume, 5 gof
+                                    order = ['unindex', 'vol', 'gof']
+                                    ascend = [True, True, False]
+                                    order_1 = order.index(order1)
+                                    order_2 = order.index(order2)
+                                    order_3 = order.index(order3)
+                                    ndx = ndx.astype({3:float, 4:float, 5:float}).\
+                                        sort_values(by=[order_1 + 3, order_2 + 3, order_3 + 3],
+                                                    ascending=[ascend[order_1], ascend[order_2], ascend[order_3]])
+
+                                    SGError, SGData = GSASIIspc.SpcGroup(GSASIIspc.spgbyNum[tight_spg.index(ndx.iloc[phase_num, 1]) + 1])
+                                    A = GSASIIlattice.cell2A(np.array(ndx.iloc[phase_num, 6:12], dtype=float)) # attention to loc !!!
+                                    HKLD = np.array(self.gen_refl(dmin, SGData, A))
+                                    print(' '.join(list(ndx.astype({3:str, 4:str, 5:str}).iloc[phase_num])))
+                                else:
+                                    print('check your file name')
+                            except:
+                                print('pls put TOPAS_<drive num>_<gof, unindex, vol>_<num>_<num> (last num starts from zero)')
+
+                        elif len(phase[0].split(' ')) == 1: # by Bravais
+                            try:
+                                Bravais = int(phase[0])
+                                A = GSASIIlattice.cell2A(np.array([float(x) for x in phase[1:]]))
+                                HKLD = np.array(GSASIIlattice.GenHBravais(dmin, Bravais, A))  # generate [h, k, l, d, -1]
+                            except:
+                                print('pls put a number for Bravais')
+                                print('pls put 3 lattice and 3 angle values (,)')
+
+                        else: # by space group H-M symbol
+                            try:
+                                SGError, SGData = GSASIIspc.SpcGroup(phase[0])
+                                A = GSASIIlattice.cell2A(np.array([float(x) for x in phase[1:]]))
+                                HKLD = np.array(self.gen_refl(dmin, SGData, A))
+                            except:
+                                print('pls put a H-M space group separated by space (No space in the head)')
+                                print('pls put 3 lattice and 3 angle values (,)')
+
+                        if 'HKLD' in locals():
+                            positions = (2 * np.pi / HKLD[:, 3] - self.intqaxis[0]) / \
+                                        (self.intqaxis[-1] - self.intqaxis[0]) * self.intqaxis.shape[0]
+                            self.plot_reflections(winobj=winobj, positions=positions, phase_name=line_edit, symbol=[],
+                                                  offset=0.05, hkl=HKLD[:, 0:3], color='w')
+                            if self.checksdict['integrated'].isChecked() and \
+                                    'original' in self.curve_timelist[0]['integrated'] or \
+                                    'smoothed' in self.curve_timelist[0]['integrated']:
+                                self.plot_reflections(winobj=winobj, positions=2 * np.pi / HKLD[:, 3], phase_name=line_edit,
+                                                      symbol='max', offset=0.05, hkl=HKLD[:, 0:3], color='k')
+                        # the following is the same as Bravais
+                        # try:
+                        #     A = GSASIIlattice.cell2A(np.array([float(x) for x in phase[1:]]))
+                        #     SG = {}
+                        #     sg_info = phase[0].split('_')
+                        #     SG['SGLatt'] = sg_info[0][0]
+                        #     SG['SGLaue'] = sg_info[0][1:]
+                        #     if len(sg_info) > 1: SG['SGUniq'] = sg_info[1]
+                        #     else: SG['SGUniq'] = ''
+                        # except:
+                        #     print('pls put e.g. C2/m or C2/m_c (_c for unique monoclinic axis) for correct Laue groups:')
+                        #     Laue = ['-1','2/m','mmm','4/m','6/m','4/mmm','6/mmm', '3m1', '31m', '3', '3R', '3mR', 'm3', 'm3m']
+                        #     print(Laue)
+                        # else:
+                        #     dmin = 2 * np.pi / self.intqaxis[-1]
+                        #     HKLD = np.array(GSASIIlattice.GenHLaue(dmin, SG, A))  # generate [h, k, l, d, -1]
+                        #     positions = (2 * np.pi / HKLD[:, 3] - self.intqaxis[0]) / (self.intqaxis[-1] - self.intqaxis[0]) * \
+                        #                 self.intqaxis.shape[0]
+                        #     self.plot_reflections(winobj=winobj, positions=positions, phase_name=line_edit, symbol=[],
+                        #                           offset=0.03, hkl=HKLD[:, 0:3], color='w')
+        else:
+            tempwidget.setText('add ref. phase (Ctrl+2)')
+            tempwidget.setShortcut('Ctrl+2')
+            for line_edit in self.linedit['time series']:
+                if line_edit[0:10] == 'ref. phase':
+                    # delete old lines
+                    for index in reversed(range(len(pw.items))):  # shocked!
+                        if isinstance(pw.items[index], pg.PlotDataItem):
+                            if pw.items[index].name() == line_edit: pw.removeItem(pw.items[index])
+
+                    # hkl text
+                    for index in reversed(range(len(pw.items))):  # shocked!
+                        if isinstance(pw.items[index], pg.TextItem):
+                            if pw.items[index].color == fn.mkColor('w'):
+                                pw.removeItem(pw.items[index])
+
+    def gen_refl(self, dmin, SGData, A):
+        # modified from GenHBravais in GSASIIlattice
+        Hmax = GSASIIlattice.MaxIndex(dmin, A)
+        dminsq = 1. / (dmin ** 2)
+        HKL = []
+        Cent = SGData['SGLatt']
+        SGSys = SGData['SGSys']
+        Ops = []
+        for ops in SGData['SpGrp'].split(' ')[1:]:
+            Ops.append(ops.split('/'))
+        # x = np.array([.11,.13,.17])  # a random position
+        # x_all = []
+        # for ops in SGData['SGOps']: # this should be all of equivalent positions? maybe not for some: R-3m
+        #     x_all.append(ops[0].dot(x) + ops[1])
+        #
+        # x_unique = np.unique(np.array(x_all), axis=0) # should be unique already
+
+        if SGSys == 'triclinic':
+            for l in range(-Hmax[2], Hmax[2] + 1):
+                for k in range(-Hmax[1], Hmax[1] + 1):
+                    hmin = 0
+                    if (k < 0): hmin = 1
+                    if (k == 0 and l < 0): hmin = 1
+                    for h in range(hmin, Hmax[0] + 1):
+                        H = [h, k, l]
+                        rdsq = GSASIIlattice.calc_rDsq(H, A)
+                        if 0 < rdsq <= dminsq:
+                            HKL.append([h, k, l, GSASIIlattice.rdsq2d(rdsq, 6), -1])
+
+        elif SGSys == 'monoclinic': # - b unique, second setting, do you need the first setting, i.e. a or c unique?
+            Hmax = GSASIIlattice.SwapIndx(2, Hmax)
+            for h in range(Hmax[0] + 1):
+                for k in range(-Hmax[1], Hmax[1] + 1):
+                    lmin = 0
+                    if k < 0: lmin = 1
+                    for l in range(lmin, Hmax[2] + 1):
+                        [h, k, l] = GSASIIlattice.SwapIndx(-2, [h, k, l])
+                        H = []
+                        screw_axis = True
+                        glide_plane = True
+                        if '21' in Ops[0] and h == 0 and l == 0 and k % 2: screw_axis = False
+                        if k == 0:
+                            if 'a' in Ops[0] and h % 2: glide_plane = False
+                            if 'c' in Ops[0] and l % 2: glide_plane = False
+                            if 'n' in Ops[0] and (h + l) % 2: glide_plane = False
+
+                        if GSASIIlattice.CentCheck(Cent, [h, k, l]) and screw_axis and glide_plane: H = [h, k, l]
+                        if H:
+                            rdsq = GSASIIlattice.calc_rDsq(H, A)
+                            if 0 < rdsq <= dminsq:
+                                HKL.append([h, k, l, GSASIIlattice.rdsq2d(rdsq, 6), -1])
+                        [h, k, l] = GSASIIlattice.SwapIndx(2, [h, k, l])
+
+        elif SGSys == 'orthorhombic':
+            for h in range(Hmax[0] + 1):
+                for k in range(Hmax[1] + 1):
+                    for l in range(Hmax[2] + 1):
+                        H = []
+                        screw_axis = True
+                        glide_plane = True
+                        if '21' in Ops[0] and k == 0 and l == 0 and h % 2: screw_axis = False
+                        if '21' in Ops[1] and h == 0 and l == 0 and k % 2: screw_axis = False
+                        if '21' in Ops[2] and k == 0 and h == 0 and l % 2: screw_axis = False
+                        if h == 0:
+                            if 'b' in Ops[0] and k % 2: glide_plane = False
+                            if 'c' in Ops[0] and l % 2: glide_plane = False
+                            if 'n' in Ops[0] and (k + l) % 2: glide_plane = False
+                            if 'd' in Ops[0] and (k + l) % 4: glide_plane = False
+
+                        if k == 0:
+                            if 'a' in Ops[1] and h % 2: glide_plane = False
+                            if 'c' in Ops[1] and l % 2: glide_plane = False
+                            if 'n' in Ops[1] and (h + l) % 2: glide_plane = False
+                            if 'd' in Ops[1] and (h + l) % 4: glide_plane = False
+
+                        if l == 0:
+                            if 'b' in Ops[2] and k % 2: glide_plane = False
+                            if 'a' in Ops[2] and h % 2: glide_plane = False
+                            if 'n' in Ops[2] and (k + h) % 2: glide_plane = False
+                            if 'd' in Ops[2] and (k + h) % 4: glide_plane = False
+
+                        if GSASIIlattice.CentCheck(Cent, [h, k, l]) and screw_axis and glide_plane: H = [h, k, l]
+                        if H:
+                            rdsq = GSASIIlattice.calc_rDsq(H, A)
+                            if 0 < rdsq <= dminsq:
+                                HKL.append([h, k, l, GSASIIlattice.rdsq2d(rdsq, 6), -1])
+
+        elif SGSys == 'tetragonal': # c axis, a axis and ab diagonal axis
+            for l in range(Hmax[2] + 1):
+                for k in range(Hmax[1] + 1):
+                    for h in range(k, Hmax[0] + 1):
+                        H = []
+                        screw_axis = True
+                        glide_plane = True
+                        if '42' in Ops[0] and h == 0 and k == 0 and l % 2: screw_axis = False
+                        if ('41' or '43') in Ops [0] and h == 0 and k == 0 and l % 4: screw_axis = False
+                        if l == 0:
+                            if 'b' in Ops[0] and k % 2: glide_plane = False
+                            if 'a' in Ops[0] and h % 2: glide_plane = False
+                            if 'n' in Ops[0] and (k + h) % 2: glide_plane = False
+
+                        if len(Ops) > 1:
+                            if '21' in Ops[1] and k == 0 and l == 0 and h % 2: screw_axis = False
+                            if h == 0:
+                                if 'b' in Ops[1] and k % 2: glide_plane = False
+                                if 'c' in Ops[1] and l % 2: glide_plane = False
+                                if 'n' in Ops[1] and (k + l) % 2: glide_plane = False
+                                if 'd' in Ops[1] and (k + l) % 4: glide_plane = False
+
+                        if len(Ops) > 2:
+                            if h == k:
+                                if ('n' or 'c') in Ops[2] and l % 2: glide_plane = False
+                                if 'd' in Ops[2] and (2 * h + l) % 4: glide_plane = False
+
+                        if GSASIIlattice.CentCheck(Cent, [h, k, l]) and screw_axis and glide_plane: H = [h, k, l]
+                        if H:
+                            rdsq = GSASIIlattice.calc_rDsq(H, A)
+                            if 0 < rdsq <= dminsq:
+                                HKL.append([h, k, l, GSASIIlattice.rdsq2d(rdsq, 6), -1])
+
+        elif SGSys == 'trigonal': # those with R center
+            lmin = -Hmax[2]
+            for l in range(lmin, Hmax[2] + 1):
+                for k in range(Hmax[1] + 1):
+                    hmin = k
+                    if l < 0: hmin += 1
+                    for h in range(hmin, Hmax[0] + 1):
+                        H = []
+                        glide_plane = True
+                        if len(Ops) > 1:
+                            if ('c' or 'n') in Ops[1] and h == k and l % 2: glide_plane = False
+
+                        if GSASIIlattice.CentCheck(Cent, [h, k, l]) and glide_plane: H = [h, k, l]
+                        if H:
+                            rdsq = GSASIIlattice.calc_rDsq(H, A)
+                            if 0 < rdsq <= dminsq:
+                                HKL.append([h, k, l, GSASIIlattice.rdsq2d(rdsq, 6), -1])
+
+        elif SGSys == 'hexagonal': # those starts with P
+            lmin = 0
+            for l in range(lmin, Hmax[2] + 1):
+                for k in range(Hmax[1] + 1):
+                    hmin = k
+                    if l < 0: hmin += 1
+                    for h in range(hmin, Hmax[0] + 1):
+                        H = []
+                        screw_axis = True
+                        glide_plane = True
+                        if h == 0 and k == 0:
+                            if ('31' or '32' or '62' or '64') in Ops[0] and l % 3: screw_axis = False
+                            if '63' in Ops[0] and l % 2: screw_axis = False
+                            if ('61' or '65') in Ops[0] and l % 6: screw_axis = False
+
+                        if len(Ops) > 1:
+                            if 'c' in Ops[1] and (h + k) == 0 and l % 2: glide_plane = False
+
+                        if len(Ops) > 2:
+                            if 'c' in Ops[2] and h == k and l % 2: glide_plane = False
+
+                        if GSASIIlattice.CentCheck(Cent, [h, k, l]) and screw_axis and glide_plane: H = [h, k, l]
+                        if H:
+                            rdsq = GSASIIlattice.calc_rDsq(H, A)
+                            if 0 < rdsq <= dminsq:
+                                HKL.append([h, k, l, GSASIIlattice.rdsq2d(rdsq, 6), -1])
+
+        else:  # cubic
+            for l in range(Hmax[2] + 1):
+                for k in range(l, Hmax[1] + 1):
+                    for h in range(k, Hmax[0] + 1):
+                        H = []
+                        screw_axis = True
+                        glide_plane = True
+                        if k == 0 and l == 0:
+                            if ('21' or '42') in Ops[0] and h % 2: screw_axis = False
+                            if ('41' or '43') in Ops[0] and h % 4: screw_axis = False
+
+                        if h == 0:
+                            if 'b' in Ops[0] and k % 2: glide_plane = False
+                            if 'c' in Ops[0] and l % 2: glide_plane = False
+                            if 'n' in Ops[0] and (k + l) % 2: glide_plane = False
+                            if 'd' in Ops[0] and (k + l) % 4: glide_plane = False
+
+                        if h == k and len(Ops) > 2:
+                            if ('c' or 'n') in Ops[2] and l % 2: glide_plane = False
+                            if 'd' in Ops[2] and (2 * h + l) % 4: glide_plane = False
+
+                        if GSASIIlattice.CentCheck(Cent, [h, k, l]) and screw_axis and glide_plane: H = [h, k, l]
+                        if H:
+                            rdsq = GSASIIlattice.calc_rDsq(H, A)
+                            if 0 < rdsq <= dminsq:
+                                HKL.append([h, k, l, GSASIIlattice.rdsq2d(rdsq, 6), -1])
+        return GSASIIlattice.sortHKLd(HKL, True, False)
+
+    def plot_ref_phases(self, winobj):
+        if hasattr(self, 'ref_phase'):
+            for phase in self.ref_phase:
+                if self.curvedict['time series'][phase].isChecked():
+                    A = GSASIIlattice.cell2A(self.ref_phase[phase]['cell'])
+                    dmin = 2 * np.pi / self.intqaxis[-1]
+                    Bravais = self.ref_phase[phase]['Bravais']  # a number
+                    HKLD = np.array(GSASIIlattice.GenHBravais(dmin, Bravais, A))  # generate [h, k, l, d, -1]
+                    positions = (2 * np.pi / HKLD[:, 3] - self.intqaxis[0]) / (self.intqaxis[-1] - self.intqaxis[0]) * \
+                                self.intqaxis.shape[0]
+                    self.plot_reflections(winobj=winobj, positions=positions, phase_name=phase, symbol=[],
+                                          offset=-.05, hkl=HKLD[:, 0:3],color=self.ref_phase[phase]['color'])
+                    if self.checksdict['integrated'].isChecked() and \
+                            'original' in self.curve_timelist[0]['integrated'] or \
+                            'smoothed' in self.curve_timelist[0]['integrated']:
+                        self.plot_reflections(winobj=winobj, positions=2 * np.pi / HKLD[:, 3], phase_name=phase,
+                                              symbol='min', offset=0.05, hkl=HKLD[:, 0:3], color='b')
+
+            for phase in self.ref_phase:
+                if not self.curvedict['time series'][phase].isChecked():
+                    # delete old plot
+                    pw = winobj.gdockdict[self.method_name].tabdict['time series'].tabplot
+                    for index in reversed(range(len(pw.items))):  # shocked!
+                        if isinstance(pw.items[index], pg.PlotDataItem):
+                            if pw.items[index].name() == phase: pw.removeItem(pw.items[index])
+
+                    # delete old text
+                    for index in reversed(range(len(pw.items))):  # shocked!
+                        if isinstance(pw.items[index], pg.TextItem):
+                            if pw.items[index].color == fn.mkColor(self.ref_phase[phase]['color']):
+                                pw.removeItem(pw.items[index])
 
     def plot_from_load(self, winobj): # some part can be cut out for a common function
         # if winobj.slideradded == False:
@@ -2064,6 +3018,12 @@ class XRD(Methods_Base):
                 self.color_bar_ts.setImageItem(self.img_ts, pw)
                 if hasattr(self, 'y_range'):
                     pw.setYRange(self.y_range[0], self.y_range[1])
+
+                # ref_phases
+                if hasattr(self,'ref_phase'):
+                    for phase in self.ref_phase:
+                        self.curvedict['time series'][phase].stateChanged.connect(lambda:self.plot_ref_phases(winobj))
+                        self.curvedict['time series'][phase].setChecked(True)
 
         if hasattr(self, 'refinegpx'):
             cell_para = []
@@ -2119,7 +3079,8 @@ class XRD(Methods_Base):
             if not self.checksdict['segregation degree-T'].isChecked(): self.checksdict['segregation degree-T'].setChecked(True)
             pw = winobj.gdockdict[self.method_name].tabdict['centroid-T'].tabplot
             for index in reversed(range(len(pw.items))):  # shocked!
-                if isinstance(pw.items[index], pg.PlotCurveItem): pw.removeItem(pw.items[index])
+                if isinstance(pw.items[index], pg.PlotDataItem): # pg.PlotCurveItem):
+                    pw.removeItem(pw.items[index])
 
             centroid_refl = [] # centre of mass for each reflection
             for hist in range(cell_para.shape[0]):
@@ -2246,12 +3207,12 @@ class XRD(Methods_Base):
 
         # raw
         if 'show image' in self.curve_timelist[0]['raw']:
-            if self.colormax_set:  # the max color value of time series data
-                pass
-            else:
-                self.colormax = np.ceil(self.rawdata[0:500, 0].max())  # part of the detetor area
-                self.colormax_set == True
-
+            # if self.colormax_set:  # the max color value of time series data
+            #     pass
+            # else:
+            #     self.colormax = np.ceil(self.rawdata[0:500, 0].max())  # part of the detetor area
+            #     self.colormax_set = True
+            self.colormax = float(self.linewidgets['raw']['color max'].text())
             self.data_timelist[0]['raw']['show image'].image = pg.ImageItem(image=self.rawdata)
             # to avoid the central mask, the size of rawdata is 1065, 1030
 
@@ -2279,26 +3240,33 @@ class XRD(Methods_Base):
             self.data_timelist[0]['integrated']['truncated'].symbolsize = 20
 
         if 'smoothed' in self.curve_timelist[0]['integrated']:
-            self.intdata_smoothed = scipy.signal.savgol_filter(intdata_clipped,
-                                                  int(self.parameters['integrated']['Savitzky-Golay window'].setvalue),
-                                                  int(self.parameters['integrated']['Savitzky-Golay order'].setvalue))
-            self.data_scale('integrated', 'smoothed', intqaxis_clipped, self.intdata_smoothed)
+            sg_win = int(self.parameters['integrated']['Savitzky-Golay window'].setvalue)
+            sg_order = int(self.parameters['integrated']['Savitzky-Golay order'].setvalue)
+            if sg_win > sg_order + 1:
+                self.intdata_smoothed = scipy.signal.savgol_filter(intdata_clipped,sg_win,sg_order)
+                self.data_scale('integrated', 'smoothed', intqaxis_clipped, self.intdata_smoothed)
 
         if 'find peaks' in self.curve_timelist[0]['integrated']:
-            if hasattr(self, 'intdata_smoothed'):
-                peaks, peak_properties = self.find_peak_conditions(self.intdata_smoothed)
-                self.data_scale('integrated', 'find peaks', intqaxis_clipped[peaks], self.intdata_smoothed[peaks])
-            else:
-                peaks, peak_properties = self.find_peak_conditions(self.intdata)
-                self.data_scale('integrated', 'find peaks', intqaxis_clipped[peaks], intdata_clipped[peaks])
+            try:
+                if hasattr(self, 'intdata_smoothed'):
+                    peaks, peak_properties = self.find_peak_conditions(self.intdata_smoothed)
+                    self.data_scale('integrated', 'find peaks', intqaxis_clipped[peaks], self.intdata_smoothed[peaks])
+                else:
+                    peaks, peak_properties = self.find_peak_conditions(self.intdata)
+                    self.data_scale('integrated', 'find peaks', intqaxis_clipped[peaks], intdata_clipped[peaks])
 
-            self.data_timelist[0]['integrated']['find peaks'].pen = None
-            self.data_timelist[0]['integrated']['find peaks'].symbol = 't'
-            self.data_timelist[0]['integrated']['find peaks'].symbolsize = 20
+                self.data_timelist[0]['integrated']['find peaks'].pen = None
+                self.data_timelist[0]['integrated']['find peaks'].symbol = 't'
+                self.data_timelist[0]['integrated']['find peaks'].symbolsize = 20
+            except:
+                print('find peak after you are fine with other steps')
             
         # time series
         if 'pointer' in self.curve_timelist[0]['time series']:
             self.plot_pointer('time series', 0, self.index, 't2', 15)
+
+        if self.checksdict['single peak int.'].isChecked():
+            self.plot_pointer('single peak int.', self.index, 1, 'd', 15)
 
         # refinement single
         if 'observed' in self.curve_timelist[0]['refinement single']:
@@ -2416,6 +3384,16 @@ class XRD_INFORM_2(XRD):
             self.intfile_appendix = '_resultCluster.h5'
             self.exportfile.replace('File', 'Cluster')
 
+    def read_data_index(self, index): # for raw img
+        file = h5py.File(self.filename, 'r')
+        rawdata = file['entry/instrument/eiger/data']
+        if ev2nm / self.wavelength * 10 > 13000: index = index * 2 + 1
+        else: index = index * 2
+        self.rawdata = np.zeros((rawdata.shape[1],rawdata.shape[2]), dtype='uint32')
+        rawdata.read_direct(self.rawdata, source_sel=np.s_[index, :, :])
+        self.rawdata = np.log10(self.rawdata).transpose()
+        file.close()
+
     def plot_from_prep(self, winobj):  # do integration; some part should be cut out to make a new function
         # if winobj.slideradded == False:
         winobj.setslider()
@@ -2448,7 +3426,7 @@ class XRD_INFORM_2(XRD):
 
             if ev2nm / wavelength * 10 < 13000: # low or high energy
                 index_sel = np.arange(0,I0.shape[0],2)
-                E0 = data4xrd[0,0]
+                E0 = data4xrd[2,0] # was [0,0] before, but is not always correct !
             else:
                 index_sel = np.arange(1, I0.shape[0] + 1, 2)
                 E0 = data4xrd[1,0]
@@ -2566,12 +3544,22 @@ class XRD_INFORM_2(XRD):
 
         return [self.entrytimesec[0, 0], self.entrytimesec[-1, 1]]
 
-class XRD_INFORM_2_ONLY(XRD):
+class XRD_INFORM_2_ONLY(XRD_INFORM_2):
     def __init__(self, path_name_widget):
         super(XRD_INFORM_2_ONLY, self).__init__(path_name_widget)
         if self.intfile_appendix == '_resultFile.h5': # this mode use the cluster
             self.intfile_appendix = '_resultCluster.h5'
             self.exportfile.replace('File', 'Cluster')
+
+    def read_data_index(self, index): # for raw img
+        file = h5py.File(self.filename, 'r')
+        rawdata = file['entry/instrument/eiger/data']
+        # if ev2nm / self.wavelength * 10 > 13000: index = index * 2 + 1
+        # else: index = index * 2
+        self.rawdata = np.zeros((rawdata.shape[1],rawdata.shape[2]), dtype='uint32')
+        rawdata.read_direct(self.rawdata, source_sel=np.s_[index, :, :])
+        self.rawdata = np.log10(self.rawdata).transpose()
+        file.close()
 
     def plot_from_prep(self, winobj):  # do integration; some part should be cut out to make a new function
         # if winobj.slideradded == False:
@@ -2874,18 +3862,17 @@ class Optic(Methods_Base):
         self.exportdir = os.path.join(self.directory, 'process', self.fileshort + '_Optic_data')
         if not os.path.isdir(self.exportdir): os.mkdir(self.exportdir)
 
-        if int(self.directory.split('202')[1][0]) > 1: # new spectrometer after 2021 (202 1)
-            self.channelnum = 2068
-            # ch = np.arange(0, self.channelnum)
-            # A = 194.85605
-            # B = 0.5487633
-            # C = -5.854113E-05
-            # D = 3.1954566E-09
-            # self.channels = A + ch * B + ch ** 2 * C + ch ** 3 * D # calibrated numbers
-        else: # old spectrometer
-            self.channelnum = 2048
-
-        self.channels = np.linspace(200, 1100, self.channelnum) # an estimation
+        # if int(self.directory.split('202')[1][0]) > 1: # new spectrometer after 2021 (202 1)
+        self.channelnum = 2068
+        ch = np.arange(0, self.channelnum, dtype='float')
+        A = 194.85605
+        B = 0.5487633
+        C = -5.854113E-05
+        D = 3.1954566E-09
+        self.channels = A + ch * B + ch ** 2 * C + ch ** 3 * D # calibrated numbers
+        # else: # old spectrometer
+        #     self.channelnum = 2048
+        #     self.channels = np.linspace(200, 1100, self.channelnum) # an estimation
 
         self.entrytimesec = []
         self.method_name = []
@@ -3021,12 +4008,12 @@ class PL(Optic):
                                   'left': 'Data number'},
                           'fit-T': {'bottom':'Data number',
                                      'left':''}}
-        self.actions = {'time series': {'update range': self.update_range,
+        self.actions = {'time series': {'update y,z range (Ctrl+0)': self.update_range,
                                         'Export reference (Ctrl+X)': self.export_norm}}
-        self.align_data = int(path_name_widget['align data number'].text())
-        self.to_time = time.mktime(
-            datetime.strptime(path_name_widget['to time'].text(), '%Y-%m-%dT%H:%M:%S').timetuple())  # in second
-        self.aligned = False
+        # self.align_data = int(path_name_widget['align data number'].text())
+        # self.to_time = time.mktime(
+        #     datetime.strptime(path_name_widget['to time'].text(), '%Y-%m-%dT%H:%M:%S').timetuple())  # in second
+        # self.aligned = False
         self.linedit = {'time series': {'z min': '-2',
                                         'z max': '0.1',
                                         'y min':'0',
@@ -3108,9 +4095,9 @@ class Refl(Optic):
                           'fit-T': {'bottom': 'Data number',
                                      'left': ''}}
 
-        self.align_data = int(path_name_widget['align data number'].text())
-        self.to_time = time.mktime(datetime.strptime(path_name_widget['to time'].text(), '%Y-%m-%dT%H:%M:%S').timetuple()) # in second
-        self.aligned = False
+        # self.align_data = int(path_name_widget['align data number'].text())
+        # self.to_time = time.mktime(datetime.strptime(path_name_widget['to time'].text(), '%Y-%m-%dT%H:%M:%S').timetuple()) # in second
+        # self.aligned = False
         self.ini_data_curve_color()  # this has to be at the end line of each method after a series of other attributes
 
         # unique to Refl
@@ -3119,11 +4106,13 @@ class Refl(Optic):
         self.linedit = {'time series':{'z min':'-2',
                                        'z max':'0.1',
                                        'y min':'0',
-                                       'y max':'1000'}} # ,
+                                       'y max':'1000'},
+                        'raw':{'load reference from':''}} # ,
                                        # 'filter criterion':'2'}} # larger than 2 after referenced.
 
-        self.actions = {'time series':{'update range': self.update_range,},
-                        'raw': {'Export reference (Ctrl+X)': self.export_norm}}
+        self.actions = {'time series':{'update y,z range (Ctrl+0)': self.update_range,},
+                        'raw':{'Export reference (Ctrl+X)': self.export_norm,
+                               'Load refence (Ctrl+B)': self.load_norm}}
                                        # 'update z': self.update_z}}
 
     # def updata_z(self, winobj): # this function is currently redundant as plot_optic_2D does not involve z values any more
@@ -3140,33 +4129,47 @@ class Refl(Optic):
                 if 'refl_ref' in list(f.keys()): del f['refl_ref']
                 f.create_dataset('refl_ref', data=np.array(self.refcandidate), dtype='float32')
 
-            if self.aligned:
-                del f['time in seconds']
-                f.create_dataset('time in seconds', self.entrytimesec)
+            if hasattr(self, 'aligned'):
+                if self.aligned:
+                    del f['time in seconds']
+                    f.create_dataset('time in seconds', self.entrytimesec)
+
+    def load_norm(self, winobj):
+        norm_file = self.linewidgets['raw']['load reference from'].text()
+        nf = os.path.join(self.directory, 'process', norm_file + '_Optic_data', norm_file + '_refl_data.h5')
+        if os.path.isfile(nf):
+            with h5py.File(nf, 'r') as f:
+                if 'refl_ref' in f.keys():
+                    self.refcandidate = np.zeros(f['refl_ref'].shape[0], dtype=float)
+                    f['refl_ref'].read_direct(self.refcandidate)
+
+        # turn on ref. check
+        self.curvedict['raw']['reference'].setChecked(True)
 
     def plot_from_load(self, winobj): # this needs pre-select a good reference
         winobj.setslider()
-        self.curvedict['time series']['pointer'].setChecked(True)
         pw = winobj.gdockdict[self.method_name].tabdict['time series'].tabplot
-        for key in winobj.methodict:  # for xas-xrd-refl correlation
-            if key[0:3] in ['xas', 'xrd'] and hasattr(winobj.methodict[key], 'entrytimesec'):
-                try:
-                    y_low = np.where(self.entrytimesec[:,0] > winobj.methodict[key].entrytimesec[0,0])[0][0]
-                except:
-                    y_low = 0
-                try:
-                    y_up = np.where(self.entrytimesec[:, 1] > winobj.methodict[key].entrytimesec[-1,-1])[0][0]
-                except:
-                    y_up = self.entrytimesec.shape[0]
+        if hasattr(self, 'entrytimesec'):
+            for key in winobj.methodict:  # for xas-xrd-refl correlation
+                if key[0:3] in ['xas', 'xrd'] and hasattr(winobj.methodict[key], 'entrytimesec'):
+                    try:
+                        y_low = np.where(self.entrytimesec[:,0] > winobj.methodict[key].entrytimesec[0,0])[0][0]
+                    except:
+                        y_low = 0
+                    try:
+                        y_up = np.where(self.entrytimesec[:, 1] > winobj.methodict[key].entrytimesec[-1,-1])[0][0]
+                    except:
+                        y_up = self.entrytimesec.shape[0]
 
-                pw.setYRange(y_low, y_up)
-                continue
+                    pw.setYRange(y_low, y_up)
+                    continue
 
-        if self.checksdict['time series'].isChecked(): # and 'reference' in self.curve_timelist[0]['raw']:
-            if self.checksdict['raw'].isChecked() and self.curvedict['raw']['reference'].isChecked():
-                self.plot_optic_2D(100, np.log10(self.data / self.refcandidate), pw)
-            else:
-                self.plot_optic_2D(100, np.log10(self.data), pw) # / self.refcandidate
+            if self.checksdict['time series'].isChecked(): # and 'reference' in self.curve_timelist[0]['raw']:
+                self.curvedict['time series']['pointer'].setChecked(True)
+                if self.checksdict['raw'].isChecked() and self.curvedict['raw']['reference'].isChecked():
+                    self.plot_optic_2D(100, np.log10(self.data / self.refcandidate), pw)
+                else:
+                    self.plot_optic_2D(100, np.log10(self.data), pw) # / self.refcandidate
 
     def time_range(self, winobj):
         for key in winobj.path_name_widget:  # to distinguish _1, _2, ...

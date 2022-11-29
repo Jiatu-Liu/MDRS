@@ -44,7 +44,7 @@ from larch.xafs import autobk
 from larch.xafs import xftf
 
 from Classes import *
-from draggabletabwidget import *
+from draggabletabwidget_new import *
 
 import ast
 
@@ -265,8 +265,8 @@ class ShowData(QMainWindow):
                           # 'MAPbI_DMSO_2ME_coat18', # no xas
                           'MAFAPbI_DME_coat20']
 
-        name_list_ref3 = ['MACl1M_DMF_slow_dry_coat004d',
-                          'MACl1M_DMF_slow_dry_coat004f',
+        name_list_ref3 = [# 'MACl1M_DMF_slow_dry_coat004d',
+                          # 'MACl1M_DMF_slow_dry_coat004f',
                           'MACl1M_DMF_slow_dry_coat005',
                           'MAFAPbI_DME_coat21',
                           'MAFAPbI_DME_coat22']
@@ -279,25 +279,28 @@ class ShowData(QMainWindow):
                           'MAPbI_DMSO_2ME_coat17',
                           'MAPbI_DMSO_2ME_coat19']
 
+        name_list_ref1 = ['test_old_Br_ink_Refl',
+                          'test_old_Br_ink_2_Refl']
+
         # name_list = name_ls01 # one xrd
         # name_list = name_ls02 # two xas, one xrd
-        name_list = name_ls03 # one xas, two xrd
-        # name_list = name_ls04 # two xas, two xrd
-
+        # name_list = name_ls03 # one xas, two xrd
+        name_list = name_ls04 # two xas, two xrd
+        # name_list = []
         # name_list_refl = name_list_ref1
-        name_list_refl = name_list_ref3
-        # name_list_refl = name_list_ref4
+        # name_list_refl = name_list_ref3
+        name_list_refl = name_list_ref4
 
-        self.repeat = len(name_list)  # number of xas or xrd
         # file_directory = r"Y:\20220720\2022042008"
-        file_directory = r"W:balder\20220660\2022101308"
-        # file_directory = r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform',
+        # file_directory = r"W:balder\20220660\2022101308"
+        file_directory = r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform'
         poni_file1 = 'LaB6_12936p37eV_realCalib_sum.poni'
         poni_file2 = 'LaB6_13591p12eV_realCalib_sum.poni'
         file_apdx = '_resultCluster.h5'
         refl_directory = r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform'  # file_directory
         # refl_directory = r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData"
-
+        # if name_list != []:
+        self.repeat = len(name_list)  # number of xas or xrd
         for k in range(len(name_list)):
             if len(name_list[k]) > 1:
                 if name_list[k][0] == name_list[k][1]: # two xas
@@ -331,14 +334,14 @@ class ShowData(QMainWindow):
                                                                 # 'refine subdir': 'Refine_Coat7_RT',
                                                                 # 'data files': 'data_result*20phases',
                                                                 # 'refinement file': 'refine_coat7_rt_all.gpx'}
-            
+
             else: # only one xrd
                 self.path_name_dict['xrd_' + str(k + 1)] = {'directory': file_directory,
                                                             'raw file': name_list[k][-1],
                                                             'integration file appendix': file_apdx,
                                                             'PONI file': poni_file1,
                                                             'time interval(ms)':str(time_intevals[k])}
-
+        # if name_list_refl != []:
         for index in range(len(name_list_refl)):
             self.path_name_dict['refl_' + str(index + 1)] = {'directory': refl_directory,
                                                              'raw file': name_list_refl[index],
@@ -346,8 +349,14 @@ class ShowData(QMainWindow):
                                                              'to time':'2022-04-23T12:02:44'
                                                              }
 
-        # self.path_name_dict['pl'] = {'directory':r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
-        #                              'raw file': 'fAPbI3_MACl_0M_coat20'}
+        self.path_name_dict['refl_1'] = {'directory': r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
+                                       'raw file': 'test_1M_MACl_1M_MAFAPbI3_Refl'}
+        self.path_name_dict['refl_2'] = {'directory': r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
+                                       'raw file': 'test_1M_MACl_1M_MAFAPbI3_2_Refl'}
+        self.path_name_dict['pl_1'] = {'directory':r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
+                                         'raw file': 'test_1M_MACl_1M_MAFAPbI3_PL'}
+        self.path_name_dict['pl_2'] = {'directory': r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
+                                     'raw file': 'test_1M_MACl_1M_MAFAPbI3_2_PL'}
 
     def choose_data_read_mode(self, action):
         for index in range(self.repeat):
@@ -355,6 +364,7 @@ class ShowData(QMainWindow):
                 if key[0:3] == 'xrd': self.methodclassdict[key] = self.data_read_dict[action.text()]['xrd']
                 if key[0:3] == 'xas': self.methodclassdict[key] = self.data_read_dict[action.text()]['xas']
                 if key[0:3] == 'ref': self.methodclassdict[key] = Refl
+                if key[0:2] == 'pl': self.methodclassdict[key] = PL
 
         if not self.initialized:
             self.ini_methods_cboxes()
@@ -369,23 +379,30 @@ class ShowData(QMainWindow):
         else:
             fullname = name[0] + '.h5'
 
-        with h5py.File(fullname, 'r') as f:
+        try:
+            f = h5py.File(fullname, 'r')
+        except:
+            print('wrong type of file')
+        else:
             # read parameters and checks info and execute them
             for key in list(f['all methods'].keys()): # xas, xrd,...
-                self.checkmethods[key].setChecked(True) # first creat a method obj
-                for para in list(f['all methods'][key]['parameters'].keys()): # post-edge, chi(k)
-                    for subpara in list(f['all methods'][key]['parameters'][para].keys()): # dk, kmax,...
-                        if f['all methods'][key]['parameters'][para][subpara].dtype == 'string':
-                            self.methodict[key].parameters[para][subpara].choice = \
-                                f['all methods'][key]['parameters'][para][subpara][()].decode()
-                        else:
-                            self.methodict[key].parameters[para][subpara].setvalue = \
-                                f['all methods'][key]['parameters'][para][subpara][()]
+                if key in self.checkmethods:
+                    self.checkmethods[key].setChecked(True) # first creat a method obj
+                    for para in list(f['all methods'][key]['parameters'].keys()): # post-edge, chi(k)
+                        for subpara in list(f['all methods'][key]['parameters'][para].keys()): # dk, kmax,...
+                            if subpara in self.methodict[key].parameters[para]:
+                                if f['all methods'][key]['parameters'][para][subpara].dtype == 'string':
+                                    self.methodict[key].parameters[para][subpara].choice = \
+                                        f['all methods'][key]['parameters'][para][subpara][()].decode()
+                                else:
+                                    self.methodict[key].parameters[para][subpara].setvalue = \
+                                        f['all methods'][key]['parameters'][para][subpara][()]
 
-                for subkey in list(f['all methods'][key]['pipelines'].keys()): # raw, norm,...
-                    self.methodict[key].checksdict[subkey].setChecked(True)
-                    for entry in f['all methods'][key]['pipelines'][subkey][()]: # I0, I1,...
-                        self.methodict[key].curvedict[subkey][entry.decode()].setChecked(True)
+                    for subkey in list(f['all methods'][key]['pipelines'].keys()): # raw, norm,...
+                        self.methodict[key].checksdict[subkey].setChecked(True)
+                        for entry in f['all methods'][key]['pipelines'][subkey][()]: # I0, I1,...
+                            if entry.decode() in self.methodict[key].curvedict[subkey]:
+                                self.methodict[key].curvedict[subkey][entry.decode()].setChecked(True)
 
             if not self.slideradded:
                 self.setslider()
@@ -398,6 +415,8 @@ class ShowData(QMainWindow):
                         memrelative = mem - f['slider']['max'][()]
                         self.slider.setValue(int(memrelative / memrange * range + self.slider.maximum()))
                         self.memorize_curve()
+
+            f.close()
 
     def file_save(self):
         name = QFileDialog.getSaveFileName(self, 'Save Setup')
@@ -450,21 +469,23 @@ class ShowData(QMainWindow):
             cboxverti = QVBoxLayout()
             cboxfiles = QFormLayout()
             self.path_name_widget[key] = {}
-            for subkey in self.path_name_dict[key]:
-                self.path_name_widget[key][subkey] = QLineEdit(self.path_name_dict[key][subkey])
-                self.path_name_widget[key][subkey].setPlaceholderText(subkey)
-                cboxfiles.addRow(subkey, self.path_name_widget[key][subkey])
-
-            cboxverti.addLayout(cboxfiles)
-            cboxverti.addWidget(self.checkmethods[key])
-            self.subcboxverti[key] = QVBoxLayout()  # where all tab graph checkboxes reside, e.g. raw, norm, ...
-            cboxhori = QHBoxLayout()
-            cboxhori.addSpacing(10)
-            cboxhori.addLayout(self.subcboxverti[key])
-            cboxverti.addLayout(cboxhori)
-            cboxverti.addStretch(1)
-            self.cboxwidget[key].setLayout(cboxverti)
-            self.cboxes.addItem(self.cboxwidget[key], key)
+            try:
+                for subkey in self.path_name_dict[key]:
+                    self.path_name_widget[key][subkey] = QLineEdit(self.path_name_dict[key][subkey])
+                    self.path_name_widget[key][subkey].setPlaceholderText(subkey)
+                    cboxfiles.addRow(subkey, self.path_name_widget[key][subkey])
+            except: print('check your choice of reading mode')
+            else:
+                cboxverti.addLayout(cboxfiles)
+                cboxverti.addWidget(self.checkmethods[key])
+                self.subcboxverti[key] = QVBoxLayout()  # where all tab graph checkboxes reside, e.g. raw, norm, ...
+                cboxhori = QHBoxLayout()
+                cboxhori.addSpacing(10)
+                cboxhori.addLayout(self.subcboxverti[key])
+                cboxverti.addLayout(cboxhori)
+                cboxverti.addStretch(1)
+                self.cboxwidget[key].setLayout(cboxverti)
+                self.cboxes.addItem(self.cboxwidget[key], key)
 
     def setslider(self):
         timerange = []
@@ -624,8 +645,9 @@ class ShowData(QMainWindow):
                         self.methodict[tooltabname].curve_timelist[timelist][toolitemname][checkbox.text()]
                     )
                     del self.methodict[tooltabname].curve_timelist[timelist][toolitemname][checkbox.text()]
-                if self.methodict[tooltabname].data_timelist[0][toolitemname][checkbox.text()].image is not None:
-                    self.gdockdict[tooltabname].tabdict[toolitemname].tabplot.clear()
+                if checkbox.text() in self.methodict[tooltabname].data_timelist[0][toolitemname]:
+                    if self.methodict[tooltabname].data_timelist[0][toolitemname][checkbox.text()].image is not None:
+                        self.gdockdict[tooltabname].tabdict[toolitemname].tabplot.clear()
 
     def update_timepoints(self, slidervalue): # slidervalue in ms !
         slidervalue = (slidervalue + np.min(self.timerangearray[:, 0])) / 1000
@@ -656,7 +678,7 @@ class ShowData(QMainWindow):
         else:
             nominal_value = widgetvalue * temppara.step + temppara.lower
             self.methodict[tooltabname].paralabel[toolitemname][parawidget.objectName()].setText(
-                parawidget.objectName() + ':' + str(nominal_value))
+                parawidget.objectName() + ':{:.1f}'.format(nominal_value))
             temppara.setvalue = nominal_value
 
         if tooltabname[0:3] == 'xrd' and toolitemname == 'time series':
@@ -667,11 +689,14 @@ class ShowData(QMainWindow):
             elif parawidget.objectName() == 'normalization':
                 self.methodict[tooltabname].plot_from_load(self)
 
-            elif parawidget.objectName() in ['gap y tol.', 'gap x tol.', 'min time span']:
-                self.methodict[tooltabname].catalog_peaks(self)
+            # elif parawidget.objectName() in ['gap y tol.', 'gap x tol.', 'min time span', '1st deriv control']:
+                # self.methodict[tooltabname].catalog_peaks(self)
 
-            elif parawidget.objectName() in ['max diff start time', 'max diff time span']:
-                self.methodict[tooltabname].assign_phases(self)
+            # elif parawidget.objectName() in ['max diff start time', 'max diff time span']:
+            #     self.methodict[tooltabname].assign_phases(self)
+
+            elif parawidget.objectName() == 'single peak int. width':
+                self.methodict[tooltabname].single_peak_width(self)
 
             elif parawidget.objectName() == 'symbol size':
                 self.methodict[tooltabname].peak_map.setSymbolSize(int(nominal_value))
@@ -705,26 +730,27 @@ class ShowData(QMainWindow):
             for timelist in range(len(self.methodict[key].curve_timelist)): # timelist: 0, 1,...
                 for entry in self.methodict[key].curve_timelist[timelist][subkey]: # I0, I1,...
                     curveobj = self.methodict[key].curve_timelist[timelist][subkey][entry]
-                    dataobj = self.methodict[key].data_timelist[timelist][subkey][entry]
+                    if entry in self.methodict[key].data_timelist[timelist][subkey]:
+                        dataobj = self.methodict[key].data_timelist[timelist][subkey][entry]
                     # if dataobj.data is not None: curveobj.setData(dataobj.data, pen=None)
                     # if dataobj.pen is not None: curveobj.setPen(dataobj.pen)
                     # if dataobj.symbol is not None: curveobj.setSymbol(dataobj.symbol)
                     # if dataobj.symbolsize is not None: curveobj.setSymbolSize(dataobj.symbolsize)
                     # if dataobj.symbolbrush is not None: curveobj.setSymbolBrush(dataobj.symbolbrush)
-                    if dataobj.data is not None:
-                        curveobj.setData(dataobj.data, pen=dataobj.pen, symbol=dataobj.symbol,
-                                         symbolSize=dataobj.symbolsize, symbolBrush=dataobj.symbolbrush)
-                    if dataobj.image is not None: # for xrd raw image
-                        if hasattr(self.methodict[key],'color_bar_raw'):
-                            self.gdockdict[key].tabdict[subkey].tabplot.clear() # may not be the best if you want to process raw onsite
-                            self.methodict[key].color_bar_raw.close()
+                        if dataobj.data is not None:
+                            curveobj.setData(dataobj.data, pen=dataobj.pen, symbol=dataobj.symbol,
+                                             symbolSize=dataobj.symbolsize, symbolBrush=dataobj.symbolbrush)
+                        if dataobj.image is not None: # for xrd raw image
+                            if hasattr(self.methodict[key],'color_bar_raw'):
+                                self.gdockdict[key].tabdict[subkey].tabplot.clear() # may not be the best if you want to process raw onsite
+                                self.methodict[key].color_bar_raw.close()
 
-                        self.gdockdict[key].tabdict[subkey].tabplot.setAspectLocked()
-                        self.gdockdict[key].tabdict[subkey].tabplot.addItem(dataobj.image)
-                        self.methodict[key].color_bar_raw = pg.ColorBarItem(values=(0, self.methodict[key].colormax),
-                                                                            cmap=pg.colormap.get('CET-L3'))
-                        self.methodict[key].color_bar_raw.setImageItem(dataobj.image,
-                                                                   insert_in=self.gdockdict[key].tabdict[subkey].tabplot)
+                            self.gdockdict[key].tabdict[subkey].tabplot.setAspectLocked()
+                            self.gdockdict[key].tabdict[subkey].tabplot.addItem(dataobj.image)
+                            self.methodict[key].color_bar_raw = pg.ColorBarItem(values=(0, self.methodict[key].colormax),
+                                                                                cmap=pg.colormap.get('CET-L3'))
+                            self.methodict[key].color_bar_raw.setImageItem(dataobj.image,
+                                                                       insert_in=self.gdockdict[key].tabdict[subkey].tabplot)
 
 
 if __name__ == '__main__':
