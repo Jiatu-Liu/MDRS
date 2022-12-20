@@ -338,6 +338,9 @@ class DockGraph():
     def delcontroltab(self, winobj):
         index = winobj.controltabs.indexOf(self.tooltab)
         winobj.controltabs.removeTab(index)
+        DraggableTabBar.dragging_widget_ = None
+        DraggableTabBar.tab_bar_instances_ = []  # these two lines work!!!
+        # del self.tooltab
 
 class TabGraph_index(): # for xrd index
     def __init__(self, name):
@@ -429,9 +432,10 @@ class TabGraph():
         dockobj.tooltab.addItem(self.itemwidget, self.label)
 
     def delcontrolitem(self, dockobj):
-        self.itemwidget.deleteLayout(self.itemlayout)
-        index = dockobj.tooltab.indexOf(self.itemwidget)
-        dockobj.tooltab.removeItem(index)
+        self.itemlayout.setParent(None)
+        # index = dockobj.tooltab.indexOf(self.itemwidget)
+        # dockobj.tooltab.removeItem(index)
+        self.itemwidget.setParent(None)
 
     def delcurvechecks(self, tabname, methodobj): # curvedict is a dict for all curve checkboxes
         # actions
@@ -455,6 +459,9 @@ class TabGraph():
         # LineEdit
         if tabname in methodobj.linedit:
             for key in methodobj.linedit[tabname]:
+                # methodobj.linewidgets[tabname][key].setParent(None)
+                label = self.range_select.labelForField(methodobj.linewidgets[tabname][key])
+                if label is not None: label.setParent(None)
                 methodobj.linewidgets[tabname][key].setParent(None)
 
             self.itemlayout.removeItem(self.itemlayout.itemAt(1))
@@ -526,12 +533,12 @@ class TabGraph():
         # lineEdit
         if tabname in methodobj.linedit:
             methodobj.linewidgets[tabname] = {}
-            range_select = QFormLayout()
+            self.range_select = QFormLayout()
             for key in methodobj.linedit[tabname]:
                 methodobj.linewidgets[tabname][key] = QLineEdit(methodobj.linedit[tabname][key])
-                range_select.addRow(key, methodobj.linewidgets[tabname][key])
+                self.range_select.addRow(key, methodobj.linewidgets[tabname][key])
                 
-            self.itemlayout.addLayout(range_select)
+            self.itemlayout.addLayout(self.range_select)
 
         self.curvespacer = QSpacerItem(10, 10, QSizePolicy.Minimum, QSizePolicy.Expanding)
         self.itemlayout.addItem(self.curvespacer)
@@ -746,7 +753,8 @@ class XAS(Methods_Base):
         self.availablecurves['chi(r)-T'] = ['pointer']
         self.availablecurves['LCA(internal) single'] = ['mu_norm', 'component 1',
                                                         'component 2', 'component 3', 'errors']
-        self.availablecurves['LCA(internal)-t'] = ['pointer']
+        self.availablecurves['LCA(internal)-t'] = ['pointer', 'Components',
+                                                   'chisqr.', 'redchi.', 'redchi. norm.']
         self.directory = path_name_widget['directory'].text()
         self.fileshort = path_name_widget['raw file'].text()
         self.filename = os.path.join(self.directory, 'raw', self.fileshort + '.h5')
@@ -806,7 +814,10 @@ class XAS(Methods_Base):
                                      'dk':Paraclass(values=(0,0,1,1)),
                                      'window':Paraclass(strings=('Hanning',['Hanning','Parzen'])),
                                      'kweight':Paraclass(values=(1,0,2,1))},
-                           'mu_norm-T':{'flat norm':Paraclass(strings=('flat',['flat','norm']))}}
+                           'mu_norm-T':{'flat norm':Paraclass(strings=('flat',['flat','norm'])),
+                                        'all half': Paraclass(strings=('all',['all','odd','even']))},
+                           'LCA(internal)-t':{'all half': Paraclass(strings=('all',['all','odd','even']))},
+                           }
 
         self.actions = {'normalizing':{'filter all': self.filter_all_normalizing},
                         'normalized': {'filter all': self.filter_all_normalized},
@@ -815,7 +826,9 @@ class XAS(Methods_Base):
                                      'Export time series (Ctrl+X)': self.export_ts,
                                      'update y,z range (Ctrl+0)': self.update_range},
                         'chi(k)-T':{'update y,z range (Ctrl+0)': self.update_range},
-                        'chi(r)-T':{'update y,z range (Ctrl+0)': self.update_range}}
+                        'chi(r)-T':{'update y,z range (Ctrl+0)': self.update_range},
+                        'LCA(internal)-t':{'update (Ctrl+U)': self.lca_result_update,
+                                           'load saved LCA (Ctrl+J)': self.lca_load}}
 
         self.linedit = {'mu_norm-T': {'z max':'102',
                                       'z min':'98',
@@ -827,7 +840,10 @@ class XAS(Methods_Base):
                                       'select start (y)': '100',
                                       'select end (y)': '200',
                                       'select start (x)': '0',
-                                      'select end (x)': '100'},
+                                      'select end (x)': '100',
+                                      'average component 1 by':'10',
+                                      'average component 2 by':'10',
+                                      'average component 3 by':''},
                         'chi(k)-T': {'z max':'0.3',
                                      'z min':'-0.3',
                                      'y min': '0',
@@ -835,7 +851,9 @@ class XAS(Methods_Base):
                         'chi(r)-T': {'z max': '0.05',
                                      'z min': '0',
                                      'y min': '0',
-                                     'y max': '100'}}
+                                     'y max': '100'},
+                        'LCA(internal)-t': {'savgol win': '5',
+                                            'savgol order':'1'}}
 
                                         # self.average = int(path_name_widget['average (time axis)'].text())  # number of average data points along time axis, an odd number
         self.range = path_name_widget['energy range (eV)'].text() # useful for time_range!
@@ -855,12 +873,86 @@ class XAS(Methods_Base):
         resultfile.create_dataset('Energy', data=self.entrydata[0,0,:])
         resultfile.close()
 
+    def lca_load(self, winobj):
+        fn = os.path.join(self.exportdir, self.filename + '_LCA_result')
+        if os.path.isfile(fn):
+            with open(fn, 'rb') as f:
+                self.lca_result_group, y_start, y_end = pickle.load(f)
+
+            print('load and begin plot saved lca results')
+
+        self.lca_plot(winobj, y_start, y_end)
+
+    def lca_result_update(self, winobj):
+        y_start = int(self.linewidgets['mu_norm-T']['select start (y)'].text())
+        y_end = int(self.linewidgets['mu_norm-T']['select end (y)'].text())
+        self.lca_plot(winobj, y_start, y_end)
+
+    def lca_plot(self, winobj, y_start, y_end):
+        winobj.setslider()
+        pw = winobj.gdockdict[self.method_name].tabdict['LCA(internal)-t'].tabplot
+        for index in reversed(range(len(pw.items))):  # shocked!
+            if pw.items[index].name()[0:8] in ['Componen', 'residue_']:
+                pw.removeItem(pw.items[index])
+
+        weights = {}
+        residue = []
+        for y in np.arange(y_start, y_end):
+            for c_name in self.lca_result_group[y - y_start].weights:
+                if y == y_start: weights[c_name] = []
+                weights[c_name].append(self.lca_result_group[y - y_start].weights[c_name])
+
+            residue.append([self.lca_result_group[y - y_start].chisqr,
+                            self.lca_result_group[y - y_start].redchi])
+
+        residue = np.array(residue)
+        residue = np.column_stack((residue, residue[:, 1] / residue[:, 1].max()))
+
+        sg_win = int(self.linewidgets['LCA(internal)-t']['savgol win'].text())
+        sg_order = int(self.linewidgets['LCA(internal)-t']['savgol order'].text())
+        if sg_win > sg_order + 1 and sg_order % 2:
+            for c_name in self.lca_result_group[y - y_start].weights:
+                weights[c_name] = scipy.signal.savgol_filter(weights[c_name], sg_win, sg_order)
+
+        if self.parameters['LCA(internal)-t']['all half'].choice == 'all':
+            data_sel = np.s_[:]
+        elif self.parameters['LCA(internal)-t']['all half'].choice == 'odd':
+            data_sel = np.s_[1::2]
+        else:
+            data_sel = np.s_[0::2]
+
+        if self.curvedict['LCA(internal)-t']['Components'].isChecked():
+            c_index = 0
+            color = ['r', 'b', 'g']
+            for c_name in self.lca_result_group[y - y_start].weights:
+                pw.plot(np.arange(y_start, y_end)[data_sel], weights[c_name][data_sel],
+                        symbol='+', symbolSize=10, symbolPen=color[c_index], name='Component {}'.format(c_index + 1))
+                c_index += 1
+
+        curves = self.availablecurves['LCA(internal)-t'][2:] # the first two are pointer and Components
+        for curve in curves:
+            if self.curvedict['LCA(internal)-t'][curve].isChecked():
+                index = curves.index(curve)
+                pw.plot(np.arange(y_start, y_end)[data_sel], residue[:, index][data_sel],
+                        pen=pg.mkPen('r', width=5),name='residue_' + curve)
+
     def lca_internal(self, winobj): # currently only two components
         # establish errors
         # running plot_from_prep to have correct errors with each group/mu data
         # do lca
         # at least two components
         # according to larch minimize
+        data_choice = self.parameters['mu_norm-T']['all half'].choice
+        if data_choice != 'all':
+            groups = []
+            for i in np.arange(0,len(self.grouplist),2):
+                groups.append(self.grouplist[i])
+                groups.append(self.grouplist[i + 1])
+                if data_choice == 'odd':
+                    self.grouplist[i] = self.grouplist[i + 1]
+                else:
+                    self.grouplist[i + 1] = self.grouplist[i]
+
         c_all = []
         for i in range(3):
             t = self.linewidgets['mu_norm-T']['component %i (internal LCA)' % (i + 1)].text()
@@ -869,7 +961,14 @@ class XAS(Methods_Base):
             except:
                 print('component %i is not activated' % (i + 1))
             else:
-                c_all.append(self.grouplist[t]) # larch accept group as component
+                a = int(self.linewidgets['mu_norm-T']['average component %i by' % (i + 1)].text())
+                if t - np.ceil(a / 2) > 0 and t + np.ceil(a / 2) < len(self.grouplist) - 1:
+                    norm = self.grouplist[t].norm
+                    for j in range(int(np.ceil(a / 2))):
+                        norm += (self.grouplist[t - j - 1].norm + self.grouplist[t + j + 1].norm) / 2
+
+                    self.grouplist[t].norm = norm / (np.ceil(a / 2) + 1)
+                    c_all.append(self.grouplist[t]) # larch accept group as component
 
         y_start = int(self.linewidgets['mu_norm-T']['select start (y)'].text())
         y_end = int(self.linewidgets['mu_norm-T']['select end (y)'].text())
@@ -877,15 +976,32 @@ class XAS(Methods_Base):
         x_end = float(self.linewidgets['mu_norm-T']['select end (x)'].text())
 
         self.lca_result_group = []
-        for k in np.arange(y_start, y_end):
-            print('fitting data %i' % k)
-            self.lca_result_group.append(larch.math.lincombo_fit(group = self.grouplist[k],
-                                                                 components = c_all,
-                                                                 minvals = [0] * len(c_all),
-                                                                 maxvals = [1] * len(c_all),
-                                                                 arrayname = 'norm',
-                                                                 xmin = x_start, xmax = x_end))
-            if k == y_end - 1: print('done with LCA')
+        if c_all != []:
+            for k in np.arange(y_start, y_end):
+                print('fitting data %i' % k)
+                self.lca_result_group.append(larch.math.lincombo_fit(group = self.grouplist[k],
+                                                                     components = c_all,
+                                                                     minvals = [0] * len(c_all),
+                                                                     maxvals = [1] * len(c_all),
+                                                                     arrayname = 'norm',
+                                                                     xmin = x_start, xmax = x_end))
+                if k == y_end - 1: print('done with LCA for {}'.format(data_choice))
+
+            # save it
+            fn = os.path.join(self.exportdir, self.filename + '_LCA_result')
+            with open(fn, 'wb') as f:
+                pickle.dump([self.lca_result_group, y_start, y_end], f, -1)
+
+            print('output lca results')
+
+            if not self.checksdict['LCA(internal)-t'].isChecked():
+                self.checksdict['LCA(internal)-t'].setChecked(True)
+
+            self.parawidgets['LCA(internal)-t']['all half'].setCurrentText(data_choice)
+
+        if data_choice != 'all':
+            for i in range(len(groups)):
+                self.grouplist[i] = groups[i]
 
     def range_select(self, winobj):
         # to select range for peaks sorting
@@ -1068,34 +1184,19 @@ class XAS(Methods_Base):
                 if pw.items[index].name() == 'Jump-t': pw.removeItem(pw.items[index])
 
             pw.plot(range(self.entrytimesec.shape[0]), self.Jump, symbol='o', symbolSize=10, symbolPen='r', name='Jump-t')
-
-        if self.checksdict['LCA(internal)-t'].isChecked():
-            pw = winobj.gdockdict[self.method_name].tabdict['LCA(internal)-t'].tabplot
-            for index in reversed(range(len(pw.items))):  # shocked!
-                if pw.items[index].name()[0:9] == 'Component': pw.removeItem(pw.items[index])
-
-            y_start = int(self.linewidgets['mu_norm-T']['select start (y)'].text())
-            y_end = int(self.linewidgets['mu_norm-T']['select end (y)'].text())
-            weights = {}
-            for y in np.arange(y_start, y_end):
-                for c_name in self.lca_result_group[y - y_start].weights:
-                    if y == y_start: weights[c_name] = []
-                    weights[c_name].append(self.lca_result_group[y - y_start].weights[c_name])
-
-            c_index = 0
-            color = ['r', 'b', 'g']
-            for c_name in self.lca_result_group[y - y_start].weights:
-                pw.plot(np.arange(y_start, y_end), weights[c_name],
-                        symbol='+', symbolSize=10, symbolPen=color[c_index], name='Component {}'.format(c_index + 1))
-                c_index += 1
             
         if self.checksdict['mu_norm-T'].isChecked(): # shocked! this naughty chi-k has irregular shape!
             pw = winobj.gdockdict[self.method_name].tabdict['mu_norm-T'].tabplot
             for index in reversed(range(len(pw.items))):  # shocked!
                 if isinstance(pw.items[index], pg.ImageItem): pw.removeItem(pw.items[index])
 
-            self.plot_chi_2D(self.entrydata.shape[2], self.entrydata[0,0,0], self.entrydata[0,0,-1], 100, pw,
-                             np.array(self.espace) * 100, 'mu_norm-T')
+            im = np.array(self.espace) * 100
+            if self.parameters['mu_norm-T']['all half'].choice == 'even':
+                im[1::2,:] = im[0::2,:]
+            elif self.parameters['mu_norm-T']['all half'].choice == 'odd':
+                im[0::2, :] = im[1::2, :]
+
+            self.plot_chi_2D(self.entrydata.shape[2], self.entrydata[0, 0, 0], self.entrydata[0, 0, -1], 100, pw, im, 'mu_norm-T')
 
         if self.checksdict['chi(k)-T'].isChecked() and hasattr(self.grouplist[index], 'chi'):
             pw = winobj.gdockdict[self.method_name].tabdict['chi(k)-T'].tabplot
@@ -1160,7 +1261,7 @@ class XAS(Methods_Base):
             # is this a good way? error should be different at different stage???
 
         else:
-        # time
+            # time
             if sg_win > sg_order + 1:
                 sg_data = []
                 if data_index < (sg_win - 1) / 2:# padding with the first data
@@ -1287,7 +1388,7 @@ class XAS(Methods_Base):
         # if para_update: self.exafs_process_single(self.index, mu_filtered, mu_filtered_error)
         self.exafs_process_single(self.index, mu_filtered, mu_filtered_error)
 
-        self.dynamictitle = 'data' + str(self.index + 1) + '\t start:' + self.startime + '\t end:' + self.endtime
+        self.dynamictitle = self.fileshort + '\n data' + str(self.index + 1) + '\t start:' + self.startime + '\t end:' + self.endtime
 
         # raw
         if 'I0' in self.curve_timelist[0]['raw']:
@@ -1380,11 +1481,11 @@ class XAS(Methods_Base):
                 self.plot_pointer('chi(r)-T', 0, self.index, 't2', 15)
 
         # LCA t
-        if self.checksdict['LCA(internal)-t'].isChecked():
+        if 'pointer' in self.curve_timelist[0]['LCA(internal)-t']:
             self.plot_pointer('LCA(internal)-t', self.index, 1, 't', 15)
 
         # LCA single
-        if hasattr(self,'lca_result_group'):
+        if hasattr(self,'lca_result_group') and self.checksdict['LCA(internal) single'].isChecked():
             y_start = int(self.linewidgets['mu_norm-T']['select start (y)'].text())
             y_end = int(self.linewidgets['mu_norm-T']['select end (y)'].text())
 
@@ -1593,31 +1694,59 @@ class XAS_INFORM_2(XAS):
                             #                           data_all['I1'][index, back_sel]]).T, 2 * index + 1)  # I1
 
                         data_range = self.sel_by_energy_range(data_all['energy'][index, 0:half_index + 1])
-                        data_half_1 = np.array([data_all['energy'][index, data_range],  # E0
-                                              data_all['I0a'][index, data_range] + data_all['I0b'][index, data_range],  # I0
-                                              data_all['I1'][index, data_range]])  # I1
+
+                        try:
+                            data_half_1 = np.array([data_all['energy'][index, data_range],  # E0
+                                                  data_all['I0a'][index, data_range] + data_all['I0b'][index, data_range],  # I0
+                                                  data_all['I1'][index, data_range]])  # I1
+                        except:
+                            data_half_1 = np.array([data_all['energy'][index, data_range],  # E0
+                                                    data_all['I0a'][index, data_range] + data_all['I0b'][index, data_range], # I0
+                                                    data_all['I1a'][index, data_range] + data_all['I1b'][index, data_range]])  # I1
+
                         self.entrydata.append(data_half_1)
                         f.create_dataset('spectrum_{:04d}'.format(index * 2), data=data_half_1.T)
 
                         data_range = self.sel_by_energy_range(data_all['energy'][index, back_sel])
-                        data_half_2 = np.array([data_all['energy'][index, back_sel][data_range],  # E0
-                                              data_all['I0a'][index, back_sel][data_range] +
-                                              data_all['I0b'][index, back_sel][data_range],  # I0
-                                              data_all['I1'][index, back_sel][data_range]])  # I1
+
+                        try:
+                            data_half_2 = np.array([data_all['energy'][index, back_sel][data_range],  # E0
+                                                  data_all['I0a'][index, back_sel][data_range] +
+                                                  data_all['I0b'][index, back_sel][data_range],  # I0
+                                                  data_all['I1'][index, back_sel][data_range]])  # I1
+                        except:
+                            data_half_2 = np.array([data_all['energy'][index, back_sel][data_range],  # E0
+                                                    data_all['I0a'][index, back_sel][data_range] +
+                                                    data_all['I0b'][index, back_sel][data_range],  # I0
+                                                    data_all['I1a'][index, back_sel][data_range] +
+                                                    data_all['I1b'][index, back_sel][data_range]])  # I1
+
                         self.entrydata.append(data_half_2)
                         f.create_dataset('spectrum_{:04d}'.format(index * 2 + 1), data=data_half_2.T)
 
                         # extract data for xrd normalization
-                        # the first xrd
-                        data4xrd.append(np.array([data_all['energy'][index, 0],  # E0
-                                                   data_all['I0a'][index, 0] + data_all['I0b'][index, 0],  # I0
-                                                   data_all['I1'][index, 0]]).T  # I1
-                                         )
-                        # the second xrd
-                        data4xrd.append(np.array([data_all['energy'][index, half_index],  # E0
-                                                  data_all['I0a'][index, half_index] + data_all['I0b'][index, half_index],  # I0
-                                                  data_all['I1'][index, half_index]]).T  # I1
-                                        )
+                        try:
+                            # the first xrd
+                            data4xrd.append(np.array([data_all['energy'][index, 0],  # E0
+                                                       data_all['I0a'][index, 0] + data_all['I0b'][index, 0],  # I0
+                                                       data_all['I1'][index, 0]]).T  # I1
+                                             )
+                            # the second xrd
+                            data4xrd.append(np.array([data_all['energy'][index, half_index],  # E0
+                                                      data_all['I0a'][index, half_index] + data_all['I0b'][index, half_index],  # I0
+                                                      data_all['I1'][index, half_index]]).T  # I1
+                                            )
+                        except:
+                            # the first xrd
+                            data4xrd.append(np.array([data_all['energy'][index, 0],  # E0
+                                                      data_all['I0a'][index, 0] + data_all['I0b'][index, 0],  # I0
+                                                      data_all['I1a'][index, 0] + data_all['I1b'][index, 0]]).T  # I1
+                                            )
+                            # the second xrd
+                            data4xrd.append(np.array([data_all['energy'][index, half_index],  # E0
+                                                      data_all['I0a'][index, half_index] + data_all['I0b'][index, half_index],  # I0
+                                                      data_all['I1a'][index, half_index] + data_all['I1b'][index, 0]]).T  # I1
+                                            )
 
                     f.close()
                 else:
@@ -1712,7 +1841,7 @@ class XRD(Methods_Base):
         self.availablecurves['integrated'] = ['original', 'normalized to 1', # 'normalized to I0 and <font> &mu; </font>d',
                                               'truncated', 'smoothed', 'find peaks']
         self.availablecurves['time series'] = ['pointer']
-        self.availablecurves['single peak int.'] = ['peak position', 'estimated phase frac.',
+        self.availablecurves['single peak int.'] = ['pointer', 'peak position', 'estimated phase frac.',
                                                     'center of mass', 'phase frac. by c.o.m.',
                                                     'integration area', 'norm. int. area']
         self.availablecurves['refinement single'] = ['observed', 'calculated', 'difference']
@@ -1835,8 +1964,8 @@ class XRD(Methods_Base):
 
         self.pre_ts_btn_text = 'Do Batch Integration(Ctrl+D)'
         energy = ev2nm / self.wavelength * 10 / 1000
-        self.exportdir = os.path.join(self.directory, 'process', self.fileshort + '_{:.1f}keV'.format(energy))
-        self.exportfile = os.path.join(self.exportdir, self.fileshort + '_{:.1f}keV'.format(energy) + self.intfile_appendix)
+        self.exportdir = os.path.join(self.directory, 'process', self.fileshort + '_{}keV'.format(int(energy)))
+        self.exportfile = os.path.join(self.exportdir, self.fileshort + '_{}keV'.format(int(energy)) + self.intfile_appendix)
         self.entrytimesec = []
         self.cells_sort = {}
 
@@ -1847,9 +1976,9 @@ class XRD(Methods_Base):
         self.ref_phase = {'FAPbI3': {'color': 'y',  # no black color, light color is better
                                      'Bravais': 2,
                                      'cell': np.array([6.3621, 6.3621, 6.3621, 90, 90, 90])},
-                          # 'MAPbBr3': {'color': 'r',  # drawing color
-                          #             'Bravais': 2,  # choose from self.bravaisNames
-                          #             'cell': np.array([5.9119, 5.9119, 5.9119, 90, 90, 90])},
+                           'MAPbBr3': {'color': 'r',  # drawing color
+                                       'Bravais': 2,  # choose from self.bravaisNames
+                                       'cell': np.array([5.9119, 5.9119, 5.9119, 90, 90, 90])},
                           }
         # ref 1:
         # The phase diagram of a mixed halide (Br, I) hybrid perovskite obtained by synchrotron X-ray diffraction†
@@ -1924,12 +2053,25 @@ class XRD(Methods_Base):
                     center = (int_sum - bkg_array) * 2 * np.pi / self.intqaxis[peak_start + q_start:peak_end + q_start]
                     center = center.sum() / (int_sum - bkg_array).sum()
                     center_frac = abs(center - d2) / abs(d2 - d1)
+                    # degree of segregation
+                    dos = (2 * np.pi / self.intqaxis[peak_start + q_start:peak_end + q_start] - center) ** 2
+                    dos = np.sqrt(((int_sum - bkg_array) * dos).sum() / (int_sum - bkg_array).sum() * (1 - 1 / len(dos)))
                     single_peak_info[-1] = [peaks[index, 0], peak_start, peak_end, d, fraction,
-                                            center, center_frac, int_sum - bkg, 0]
+                                            center, center_frac, int_sum - bkg, 0, dos, 0]
 
                 self.single_peak_info = np.array(single_peak_info)
-                self.single_peak_info[:,-1] = self.single_peak_info[:,-2] / max(self.single_peak_info[:,-2])
+                self.single_peak_info[:,-3] = self.single_peak_info[:,-4] / max(self.single_peak_info[:,-4])
+                self.single_peak_info[:, -1] = self.single_peak_info[:, -2] / max(self.single_peak_info[:, -2])
                 # y, d, fraction, int., norm int.
+                # output: peak y, start x, end x in pixel, peak d in Angstrom, frac. by d, com, frac. by com,
+                # int., norm. int, dos., norm. dos.
+                fn = os.path.join(self.exportdir, self.fileshort + '_single_peak_info')
+                with open(fn, 'w') as f:
+                    np.savetxt(f, self.single_peak_info, '%-10.5f', header='peak y, start x, end x in pixel,'
+                                                                           'peak d in Angstrom, frac. by d, com, frac. by com,'
+                                                                           'int., norm. int, dos., norm. dos.')
+                    print('out put a single peak integrateion information file')
+
 
     def single_peak_select(self, evt, pw):
         if pw.sceneBoundingRect().contains(evt.scenePos()):
@@ -1957,7 +2099,7 @@ class XRD(Methods_Base):
 
     def single_peak_update(self, winobj):
         pw = winobj.gdockdict[self.method_name].tabdict['single peak int.'].tabplot
-        curves = self.availablecurves['single peak int.']
+        curves = self.availablecurves['single peak int.'][1:]
         symbols = ['x', 'o', 't', 's', 'h', 'p']
         colors = ['r', 'g', 'b', 'm', 'c', 'k']
         for index in reversed(range(len(pw.items))):  # shocked!
@@ -1993,8 +2135,8 @@ class XRD(Methods_Base):
 
             peak_start = np.array(peak_start)
             peak_end = np.array(peak_end)
-            pw.plot(peak_start + q_start, peaks[:, 0], pen=pg.mkPen('w', width=5), name='left_ips')
-            pw.plot(peak_end + q_start, peaks[:, 0], pen=pg.mkPen('w', width=5), name='right_ips')
+            pw.plot(peak_start + q_start, peaks[:, 0], pen=pg.mkPen('w', width=3), name='left_ips')
+            pw.plot(peak_end + q_start, peaks[:, 0], pen=pg.mkPen('w', width=3), name='right_ips')
             # return peak_start, peak_end
 
     def integrate_Cluster(self, ponifile_short, clusterfile):
@@ -2040,6 +2182,10 @@ class XRD(Methods_Base):
             self.intdata_ts = np.zeros((intdata_all.shape[0], intdata_all.shape[1]), dtype='float32')
             intdata_all.read_direct(self.intdata_ts)
             self.intqaxis = np.array(list(f['info/q(Angstrom)']))
+            tth = np.array(list(f['info/2theta']))
+            print(self.wavelength)
+            self.wavelength = 4 * np.pi * np.sin(tth[0] / 2 / 180 * np.pi) / self.intqaxis[0] # check?
+            print(self.wavelength)
             if 'y min' in list(f.keys()):
                 self.y_range = [f['y min'][()], f['y max'][()]]
 
@@ -2151,7 +2297,7 @@ class XRD(Methods_Base):
             tempwidget.setShortcut('Ctrl+P')
             for index in reversed(range(len(pw.items))): # shocked!
                 if isinstance(pw.items[index], pg.PlotDataItem):
-                    if pw.items[index].name()[0:4] in ['find', 'cata', 'assi', 'phas', 'inde', 'ref.']:
+                    if pw.items[index].name()[0:4] in ['find', 'cata', 'assi', 'phas', 'inde', 'ref.', 'left', 'right']:
                         pw.removeItem(pw.items[index])
 
             # delete old text
@@ -2253,10 +2399,14 @@ class XRD(Methods_Base):
                 search_range = len(self.peaks_catalog) # search through each established peak catalog
                 for k in range(len(self.peaks_all[entry])): # index on all peaks detected within one data
                     add_group = [] # indicator whether to add a new peaks group or not
+                    # matched = [] # applies when you have Y shaped peak trajectory in time series plot
                     for i in range(search_range): # index on existing peaks groups, this one is constantly changing!!!
                         # the following condition is very tricky in y direction, it needs to be [2] not [0] of self.peak_catalog[i][-1]
-                        if np.abs(self.peaks_all[entry][k] - self.peaks_catalog[i][-1][1]) <= gap_x and \
-                            np.abs(index - self.peaks_catalog[i][-1][2]) <= gap_y: # add to existing peaks group
+                        distance_x = np.abs(self.peaks_all[entry][k] - self.peaks_catalog[i][-1][1])
+                        distance_y = np.abs(index - self.peaks_catalog[i][-1][2])
+                        if distance_x <= gap_x and 0 < distance_y <= gap_y: # add to existing peaks group
+                            # matched.append([i, distance_x,
+                            #                 self.peaks_index[entry], self.peaks_all[entry][k], index, entry, k])
                             self.peaks_catalog[i].append([self.peaks_index[entry],
                                                           self.peaks_all[entry][k], index, entry, k])
                             # data number y, x, index in peaks_index_sel, data number _0 in peaks_all (very similar to y) and _1
@@ -2284,11 +2434,27 @@ class XRD(Methods_Base):
             peak_to_pop = []
             for i in range(len(self.peaks_catalog_select) - 1):
                 for j in np.arange(i + 1, len(self.peaks_catalog_select)):
-                    merged = np.unique(np.concatenate((self.peaks_catalog_select[i],self.peaks_catalog_select[j]),axis=0), axis=0)
-                    if merged.shape[0] < self.peaks_catalog_select[i].shape[0] + self.peaks_catalog_select[j].shape[0]:
-                        self.peaks_catalog_select[j] = merged
-                        peak_to_pop.append(i)
-                        print('peak {} and peak {} will be merged'.format(i,j))
+                    if self.peaks_catalog_select[i].shape[0] != 0 and self.peaks_catalog_select[j].shape[0] != 0:
+                        merged = np.unique(np.concatenate((self.peaks_catalog_select[i],self.peaks_catalog_select[j]),axis=0), axis=0)
+                        if merged.shape[0] < self.peaks_catalog_select[i].shape[0] + self.peaks_catalog_select[j].shape[0]:
+                            # version 2: the longer one survives, the shorter one get even shorter and may not survive
+                            if self.peaks_catalog_select[j].shape[0] >= self.peaks_catalog_select[i].shape[0]:
+                                self.peaks_catalog_select[i] = np.array([p for p in self.peaks_catalog_select[i]
+                                                                         if p not in self.peaks_catalog_select[j]])
+                                # self.peaks_catalog_select[j] = merged
+                                if self.peaks_catalog_select[i].shape[0] < length_limit:
+                                    peak_to_pop.append(i)
+                            else:
+                                self.peaks_catalog_select[j] = np.array([p for p in self.peaks_catalog_select[j]
+                                                                         if p not in self.peaks_catalog_select[i]])
+                                # self.peaks_catalog_select[i] = merged
+                                if self.peaks_catalog_select[j].shape[0] < length_limit:
+                                    peak_to_pop.append(j)
+
+                        # version 1: merge
+                        # self.peaks_catalog_select[j] = merged
+                        # peak_to_pop.append(i)
+                        # print('peak {} and peak {} will be merged'.format(i,j))
 
             # this is cool: list comprehensions, all other methods is incorrect (pop remove del)... not a good way either!!!
             # self.peaks_catalog_select = [peak for peak in self.peaks_catalog_select if not self.peaks_catalog_select.index(peak) in peak_to_pop]
@@ -2365,16 +2531,16 @@ class XRD(Methods_Base):
                 with open(peaks_file, 'rb') as f:
                     self.peaks_index, self.peaks_all, self.peaks_properties_all = pickle.load(f)
 
-            # draw all peaks
-            peaks_q = []  # x
-            peaks_number = []  # y
-            for index in self.peaks_index:  # y
-                for sub_index in self.peaks_all[index]:  # x
-                    peaks_q.append(sub_index)
-                    peaks_number.append(index)
+                # draw all peaks
+                peaks_q = []  # x
+                peaks_number = []  # y
+                for index in self.peaks_index:  # y
+                    for sub_index in self.peaks_all[index]:  # x
+                        peaks_q.append(sub_index)
+                        peaks_number.append(index)
 
-            try: self.find_peak_plot(peaks_q, peaks_number, winobj)
-            except: print('what is wrong with find peak plot?')
+                try: self.find_peak_plot(peaks_q, peaks_number, winobj)
+                except: print('what is wrong with find peak plot?')
 
         elif tempwidget.text() == 'load peaks catalogued (Ctrl+J)': # load peaks catalogued
             tempwidget.setText('load phases catalogued (Ctrl+J)')
@@ -2384,8 +2550,8 @@ class XRD(Methods_Base):
                 with open(pcs_file, 'rb') as f:
                     self.peaks_catalog_select = pickle.load(f)
 
-            try: self.catalog_peaks_plot(winobj)
-            except: print('what is wrong with catalog peaks plot?')
+                try: self.catalog_peaks_plot(winobj)
+                except: print('what is wrong with catalog peaks plot?')
 
         else: # load phases
             tempwidget.setText('load peaks/phases (Ctrl+J)')
@@ -2395,8 +2561,8 @@ class XRD(Methods_Base):
                 with open(phases_file, 'rb') as f:
                     self.phases = pickle.load(f)
 
-            try: self.assign_phases_plot(winobj)
-            except: print('what is wrong with assign phases plot?')
+                try: self.assign_phases_plot(winobj)
+                except: print('what is wrong with assign phases plot?')
 
     def assign_phases(self, winobj):
         if hasattr(self, 'peaks_catalog_select'):
@@ -3138,7 +3304,9 @@ class XRD(Methods_Base):
 
             pw.plot(data_num, segregation, symbol='x', symbolSize=10, symbolPen='r', name='average', pen=pg.mkPen('r', width=5))
 
-        if not winobj.slider.value() :winobj.slider.setValue(winobj.slider.minimum() + 1) # may be not the best way
+        if hasattr(self, 'slider'):
+            if not winobj.slider.value():
+                winobj.slider.setValue(winobj.slider.minimum() + 1) # may be not the best way
 
     def data_scale(self, mode, sub_mode, data_x, data_y):  # for data_process
         if self.parameters[mode]['x axis'].choice == 'q':
@@ -3203,7 +3371,7 @@ class XRD(Methods_Base):
         # energy/wavelength can be acquired from poni file
         self.read_data_time()  # gives raw and integrated data depending on checks
 
-        self.dynamictitle = 'data' + str(self.index + 1) + '\t start:' + self.startime + '\t end:' + self.endtime
+        self.dynamictitle = self.fileshort + '\n data' + str(self.index + 1) + '\t start:' + self.startime + '\t end:' + self.endtime
 
         # raw
         if 'show image' in self.curve_timelist[0]['raw']:
@@ -3265,7 +3433,8 @@ class XRD(Methods_Base):
         if 'pointer' in self.curve_timelist[0]['time series']:
             self.plot_pointer('time series', 0, self.index, 't2', 15)
 
-        if self.checksdict['single peak int.'].isChecked():
+        # single int.
+        if 'pointer' in self.curve_timelist[0]['single peak int.']:
             self.plot_pointer('single peak int.', self.index, 1, 'd', 15)
 
         # refinement single
@@ -3480,6 +3649,24 @@ class XRD_INFORM_2(XRD):
                     f['results'].read_direct(r1, source_sel=np.s_[0:turning_point,::])
                     f['results'].read_direct(r2, source_sel=np.s_[turning_point + 1::,::])
                     raw_result = np.concatenate((r1,r2), axis=0)
+                elif self.fileshort == 'MAPbBrI_2ME_DMF_coat006a_eiger':
+                    turning_point = 48 * 2 # read from the incorrectly output xrd data
+                    r1 = np.zeros((turning_point, q.shape[0]), dtype='float32')
+                    r12 = np.zeros((2, q.shape[0]), dtype='float32')
+                    r2 = np.zeros((I0.shape[0] - turning_point - 2, q.shape[0]), dtype='float32')
+                    f['results'].read_direct(r1, source_sel=np.s_[0:turning_point,::])
+                    f['results'].read_direct(r12, source_sel=np.s_[turning_point - 2:turning_point,::])
+                    f['results'].read_direct(r2, source_sel=np.s_[turning_point + 1::,::])
+                    raw_result = np.concatenate((r1,r12,r2), axis=0)           
+                elif self.fileshort == 'Br_I_2syringe_coat017c_XAS-XRD_eiger':
+                    turning_point = 26 * 2 # read from the incorrectly output xrd data
+                    r1 = np.zeros((turning_point, q.shape[0]), dtype='float32')
+                    # r12 = np.zeros((2, q.shape[0]), dtype='float32')
+                    r2 = np.zeros((I0.shape[0] - turning_point, q.shape[0]), dtype='float32')
+                    f['results'].read_direct(r1, source_sel=np.s_[0:turning_point,::])
+                    # f['results'].read_direct(r12, source_sel=np.s_[turning_point - 2:turning_point,::])
+                    f['results'].read_direct(r2, source_sel=np.s_[turning_point + 1::,::])
+                    raw_result = np.concatenate((r1,r2), axis=0)           
                 else:
                     raw_result = np.zeros((f['results'].shape[0], q.shape[0]), dtype='float32')
                     f['results'].read_direct(raw_result)
@@ -3554,8 +3741,10 @@ class XRD_INFORM_2_ONLY(XRD_INFORM_2):
     def read_data_index(self, index): # for raw img
         file = h5py.File(self.filename, 'r')
         rawdata = file['entry/instrument/eiger/data']
-        # if ev2nm / self.wavelength * 10 > 13000: index = index * 2 + 1
-        # else: index = index * 2
+        if self.fileshort == 'MAPbBrI_DMSO_2ME_coat013_eiger':
+            if ev2nm / self.wavelength * 10 > 13000: index = index * 2 + 1
+            else: index = index * 2
+
         self.rawdata = np.zeros((rawdata.shape[1],rawdata.shape[2]), dtype='uint32')
         rawdata.read_direct(self.rawdata, source_sel=np.s_[index, :, :])
         self.rawdata = np.log10(self.rawdata).transpose()
@@ -3569,73 +3758,98 @@ class XRD_INFORM_2_ONLY(XRD_INFORM_2):
         data4xrd_file = os.path.join(self.directory, 'raw', self.fileshort[0:-6] + '.h5')
 
         if os.path.isfile(data4xrd_file):
-            # the xrd data point is always the first one and the middle one of a xas spectrum
-            # the ratio of log(I0/I1) is 1.5 for the middle one and 1.42 for the first one. to make it 0.6, add 2.02
-            # Justus method to normalize. the constant is based on if the observation background can be smoothed successfully
-            # or basically to make the absorption of the materials reach calculated value, in this case 0.6, assuming
-            # thickness and components.
-            # in essence, this method allow the intensity normalized by the flux, I0, and the amount of material, mu*d
+            if os.stat(data4xrd_file).st_size > 1000: # Bytes
+                # the xrd data point is always the first one and the middle one of a xas spectrum
+                # the ratio of log(I0/I1) is 1.5 for the middle one and 1.42 for the first one. to make it 0.6, add 2.02
+                # Justus method to normalize. the constant is based on if the observation background can be smoothed successfully
+                # or basically to make the absorption of the materials reach calculated value, in this case 0.6, assuming
+                # thickness and components.
+                # in essence, this method allow the intensity normalized by the flux, I0, and the amount of material, mu*d
+                with h5py.File(data4xrd_file, 'r') as f:
+                    data = {}
+                    for key in f.keys():
+                        if key != 'time':
+                            data[key] = np.zeros(f[key].shape[-1], dtype='float')
+                            f[key].read_direct(data[key])
 
-            with h5py.File(data4xrd_file, 'r') as f:
-                data = {}
-                for key in f.keys():
-                    if key != 'time':
-                        data[key] = np.zeros(f[key].shape[-1], dtype='float')
-                        f[key].read_direct(data[key])
+                I0 = data['I0a'] + data['I0b']
 
-            I0 = data['I0a'] + data['I0b']
-            I1 = data['I1']
-            energy = data['energy']
-            # with open(self.ponifile, 'r') as f:
-            #     wavelength = float(f.readlines()[-1].splitlines()[0].partition(' ')[2]) * 1e10 # in Angstrom
-            #
-            self.wavelength = ev2nm / energy[0] * 10 # in Angstrom
+                try:
+                    I1 = data['I1']
+                except:
+                    I1 = data['I1a'] + data['I1b']
 
-            if not os.path.isdir(self.exportdir): os.mkdir(self.exportdir)
+                energy = data['energy']
+                # with open(self.ponifile, 'r') as f:
+                #     wavelength = float(f.readlines()[-1].splitlines()[0].partition(' ')[2]) * 1e10 # in Angstrom
+                #
+                self.wavelength = ev2nm / energy[0] * 10 # in Angstrom
+                if not os.path.isdir(self.exportdir): os.mkdir(self.exportdir)
+                # if np.abs(self.wavelength - wavelength) > .00001:
+                #     ponifile_update = os.path.join(self.exportdir, self.fileshort + '_{}eV.poni'.format(int(energy[0])))
+                #     ponifile_short = self.exportdir.split('\\')[-1] + '/' + ponifile_update.split('\\')[-1]
+                #     with open(self.ponifile, 'r') as f:
+                #         poni = f.readlines()
+                #
+                #     poni[-1] = 'Wavelength: {:16e}'.format(self.wavelength * 1e-10)
+                #
+                #     with open(ponifile_update, 'w') as f:
+                #         f.writelines(poni)
+                #
+                # else:
+                #     ponifile_short = self.ponifile.split('\\')[-1]
+                clusterfile = os.path.join(self.directory, 'process', self.fileshort[0:-6] + self.intfile_appendix)
 
-            # if np.abs(self.wavelength - wavelength) > .00001:
-            #     ponifile_update = os.path.join(self.exportdir, self.fileshort + '_{}eV.poni'.format(int(energy[0])))
-            #     ponifile_short = self.exportdir.split('\\')[-1] + '/' + ponifile_update.split('\\')[-1]
-            #     with open(self.ponifile, 'r') as f:
-            #         poni = f.readlines()
-            #
-            #     poni[-1] = 'Wavelength: {:16e}'.format(self.wavelength * 1e-10)
-            #
-            #     with open(ponifile_update, 'w') as f:
-            #         f.writelines(poni)
-            #
-            # else:
-            #     ponifile_short = self.ponifile.split('\\')[-1]
+                if not os.path.isfile(clusterfile): self.integrate_Cluster(self.ponifile.split('\\')[-1], clusterfile)
 
-            clusterfile = os.path.join(self.directory, 'process', self.fileshort[0:-6] + self.intfile_appendix)
+                with h5py.File(clusterfile, 'r') as f:
+                    q = np.zeros(f['q'].shape[-1], dtype='float32')
+                    f['q'].read_direct(q)
+                    raw_result = np.zeros((f['results'].shape[0], f['results'].shape[1]), dtype='float32')
+                    f['results'].read_direct(raw_result)
+                    wavelength = f['wavelength'][()] * 1e10  # critical, in Angstrom
+                # for index in range(raw_result.shape[0]):
+                #     norm_result.append(raw_result[index,:] / I0[index] / (np.log(I0[index] / I1[index]) + 2.02))
+                #
+                # shutil.copy(clusterfile,self.exportfile)
+                if raw_result.shape[0] < I0.shape[0]: # this is another menifestation of unreliabel data collection
+                    # let's discard the last one, maybe few, of I0
+                    I0 = I0[0:raw_result.shape[0]]
+                    I1 = I1[0:raw_result.shape[0]]
+                    self.entrytimesec = self.entrytimesec[0:raw_result.shape[0],:]
 
-            if not os.path.isfile(clusterfile): self.integrate_Cluster(self.ponifile.split('\\')[-1], clusterfile)
+                self.output_intg(q * wavelength / self.wavelength * 10, # now in inverse nm, to be consistent with olde files
+                                 raw_result,
+                                 raw_result / I0[:,None] / (np.log(I0[:,None] / I1[:,None]) + 2.02),
+                                 self.wavelength, 50)
+                # self.plot_from_load(winobj)
+            else:
+                print('be careful, this file has no binding xas file, the energy and time are both uncertain')
+                print('the energy is taken directly from the poni file instead of xas file')
+                print('time is based on the xrd file time and predefined time intervals')
 
-            with h5py.File(clusterfile, 'r') as f:
-                q = np.zeros(f['q'].shape[-1], dtype='float32')
-                f['q'].read_direct(q)
-                raw_result = np.zeros((f['results'].shape[0], f['results'].shape[1]), dtype='float32')
-                f['results'].read_direct(raw_result)
-                wavelength = f['wavelength'][()] * 1e10  # critical, in Angstrom
+                if not os.path.isdir(self.exportdir): os.mkdir(self.exportdir)
+                clusterfile = os.path.join(self.directory, 'process', self.fileshort[0:-6] + self.intfile_appendix)
+                if not os.path.isfile(clusterfile): self.integrate_Cluster(self.ponifile.split('\\')[-1], clusterfile)
+                with h5py.File(clusterfile, 'r') as f:
+                    q = np.zeros(f['q'].shape[-1], dtype='float32')
+                    f['q'].read_direct(q)
+                    raw_result = np.zeros((f['results'].shape[0], f['results'].shape[1]), dtype='float32')
+                    f['results'].read_direct(raw_result)
+                    wavelength = f['wavelength'][()] * 1e10  # critical, in Angstrom
 
-            # for index in range(raw_result.shape[0]):
-            #     norm_result.append(raw_result[index,:] / I0[index] / (np.log(I0[index] / I1[index]) + 2.02))
-            #
-            # shutil.copy(clusterfile,self.exportfile)
+                if self.fileshort == 'MAPbBrI_DMSO_2ME_coat013_eiger':
+                    if ev2nm / (self.wavelength / 10) < 13000: # here the self.wavelength depends on poni file, not xas file
+                        self.output_intg(q * wavelength / self.wavelength * 10,
+                                         raw_result[0::2,:], raw_result[0::2,:], self.wavelength, 50)
+                    else:
+                        self.output_intg(q * wavelength / self.wavelength * 10,
+                                         raw_result[1::2, :], raw_result[1::2, :], self.wavelength, 50)
 
-            if raw_result.shape[0] < I0.shape[0]: # this is another menifestation of unreliabel data collection
-                # let's discard the last one, maybe few, of I0
-                I0 = I0[0:raw_result.shape[0]]
-                I1 = I1[0:raw_result.shape[0]]
-                self.entrytimesec = self.entrytimesec[0:raw_result.shape[0],:]
-
-            self.output_intg(q * wavelength / self.wavelength * 10, # now in inverse nm, to be consistent with olde files
-                             raw_result,
-                             raw_result / I0[:,None] / (np.log(I0[:,None] / I1[:,None]) + 2.02),
-                             self.wavelength, 50)
+                else:
+                    self.output_intg(q * wavelength / self.wavelength * 10, raw_result, raw_result, self.wavelength, 50)
 
             self.plot_from_load(winobj)
-
         else:
             print('you need to double check your file name')
 
@@ -3656,17 +3870,31 @@ class XRD_INFORM_2_ONLY(XRD_INFORM_2):
             else: # read in entrytimesec from xas raw file
                 data4xrd_file = os.path.join(self.directory, 'raw', self.fileshort[0:-6] + '.h5')
                 if os.path.isfile(data4xrd_file):
-                    with h5py.File(data4xrd_file, 'r') as f:
-                        endtime = time.mktime(
-                            datetime.strptime(f['time'][0].decode(), '%Y-%m-%d %H:%M:%S.%f').timetuple())
-                        durations = np.ones(f['integration_time'].shape[-1] , dtype='float32')
-                        # f['integration_time'].read_direct(durations)
+                    if os.stat(data4xrd_file).st_size > 1000:
+                        with h5py.File(data4xrd_file, 'r') as f:
+                            endtime = time.mktime(
+                                datetime.strptime(f['time'][0].decode(), '%Y-%m-%d %H:%M:%S.%f').timetuple())
+                            # f['integration_time'].read_direct(durations)
 
-                    durations = durations * float(winobj.path_name_widget[self.method_name]['time interval(ms)'].text()) # in ms
-                    # self.entrytimesec = (startime + np.array([np.arange(0,len(durations)),
-                    #                                         np.arange(1,len(durations) + 1)]) * durations[0] * 1e-6).T # check the unit!!!
-                    self.entrytimesec = (endtime - np.array([np.arange(len(durations), 0, -1), # double check the time size!!!
-                                                              np.arange(len(durations) - 1, -1, -1 )]) * durations[0] * 1e-3).T  # check the unit!!!
+                            duration = float(winobj.path_name_widget[self.method_name]['time interval(ms)'].text()) # in ms
+                            data_length = f['integration_time'].shape[-1]
+                        # self.entrytimesec = (startime + np.array([np.arange(0,len(durations)),
+                        #                                         np.arange(1,len(durations) + 1)]) * durations[0] * 1e-6).T # check the unit!!!
+                        self.entrytimesec = (endtime - np.array([np.arange(data_length, 0, -1), # double check the time size!!!
+                                                                  np.arange(data_length - 1, -1, -1 )]) * duration / 1e3).T  # check the unit!!!
+
+                    else:
+                        startime = os.path.getctime(self.filename) # in absolute seconds
+                        duration = float(winobj.path_name_widget[self.method_name]['time interval(ms)'].text()) # in ms
+                        with h5py.File(self.filename, 'r') as f:
+                            data_length = f['entry/instrument/eiger/data'].shape[0]
+
+                        if self.fileshort == 'MAPbBrI_DMSO_2ME_coat013_eiger':
+                             self.entrytimesec = (startime + np.array([np.arange(data_length / 2),
+                                                                       np.arange(1,data_length / 2 + 1)]) * duration / 1e3).T
+                        else:
+                            self.entrytimesec = (startime + np.array([np.arange(data_length),
+                                                                      np.arange(1,data_length + 1)]) * duration / 1e3).T
 
                 else:
                     print('you need to double check your file name')
@@ -4071,7 +4299,7 @@ class PL(Optic):
         return [self.entrytimesec[0, 0], self.entrytimesec[-1, 1]]
 
     def data_process(self, para_update):
-        self.dynamictitle = 'data' + str(self.index + 1) + '\t start:' + self.startime + '\t end:' + self.endtime
+        self.dynamictitle = self.fileshort + '\n data' + str(self.index + 1) + '\t start:' + self.startime + '\t end:' + self.endtime
         # raw
         if 'show' in self.curve_timelist[0]['raw']:
             self.data_timelist[0]['raw']['show'].data = \
@@ -4200,7 +4428,7 @@ class Refl(Optic):
         return [self.entrytimesec[0, 0], self.entrytimesec[-1, 1]]
 
     def data_process(self, para_update):
-        self.dynamictitle = 'data' + str(self.index + 1) + '\t start:' + self.startime + '\t end:' + self.endtime
+        self.dynamictitle = self.fileshort + '\n data' + str(self.index + 1) + '\t start:' + self.startime + '\t end:' + self.endtime
         if 'show' in self.curve_timelist[0]['raw']:
             if 'reference' in self.curve_timelist[0]['raw'] and len(self.refcandidate) > 0:
                 self.data_timelist[0]['raw']['show'].data = \

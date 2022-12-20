@@ -113,6 +113,7 @@ class ShowData(QMainWindow):
 
         pg.setConfigOption('background', 'w')
         pg.setConfigOption('foreground', 'k')
+        pg.setConfigOption('leftButtonPan', False)
 
         self.cboxes = QToolBox()
         self.controltabs.addTab(self.cboxes,"Checkboxes")
@@ -195,20 +196,35 @@ class ShowData(QMainWindow):
                      ['Coat7_12S_FAPI_Br06M_Cl01M_heat_1',
                       'Coat7_12S_FAPI_Br06M_Cl01M_heat_1',
                       'Coat7_12S_FAPI_Br06M_Cl01M_heat_52']]
+
         # xrd only, name and time
+        # 20220660
         name_ls01 = [['MACl1M_DMF_airblade_QXRD_coat006_eiger',],
                      ['MACl1M_DMF_airblade_QXRD_coat006a_eiger'],
                      ['MACl1M_DMF_airblade_QXRD_coat007_eiger'],
-                     # ['MAPbBrI_DMSO_2ME_coat010_eiger'], # be careful with this one, no xas!
+                     ['Br_I_2syringe_coat017b_QXRD_eiger'], # be careful with this one, no xas!
                      ['MAPbBrI_DMSO_2ME_coat011_eiger'],
                      ['MAPbBrI_DMSO_2ME_coat012_eiger'],
+                     ['MAPbBrI_DMSO_2ME_coat013_eiger'],
+                     ['MAPbBrI_DMSO_2ME_coat013_eiger'],
                      ['MAPbBrI_DMSO_2ME_coat016_eiger'],
-                     # ['MAPbBrI_DMSO_2ME_coat018_eiger'], # no xas
+                     ['MAPbBrI_DMSO_2ME_coat018_eiger'], # no xas
                      ['MAFAPbI_DMF_coat020_eiger']]
 
-        time_intevals = [10,10,10,100,100,10,10] # mapping above
+        time_intevals = [10,10,10,100,100,100,4500,4500,10,200,10] # mapping above one by one, in ms
+
+        # 20221562
+        name_ls01 = [['MAPbBrI_DMF_coat002_QXRD'],
+                     ['MAPbBrI_DMF_coat004_QXRD'],
+                     ['MAPbBrI_2ME_DMF_coat009_QXRD'],
+                     ['MAPbBrI_DMSO_coat011_QXRD'],
+                     ['MAPbBrI_2ME_DMSO_coat016c_QXRD'],
+                     ['Br_I_2syringe_coat017c_QXRD'],
+                     ['Br_I_2syringe_coat019b_QXRD'],
+                     ]
 
         # one xas, two xrd
+        # 20220660
         name_ls03 = [['LaB6'],
                      ['MACl1M_DMF_slow_dry_coat004d'],
                      ['MACl1M_DMF_slow_dry_coat004fb'],
@@ -218,18 +234,52 @@ class ShowData(QMainWindow):
                      ['MAFAPbI_DMF_coat022g'],
                      ['MACl3M_coat023a']]
 
+        # 20221562
+        name_ls03 = [['MAFAPbI3_MACl_2ME_NMP_coat021'],
+                     # ['MAFAPbI3_MACl_DMF_coat022a']
+                     ]
+
         for index in range(len(name_ls03)):
             name_ls03[index].append(name_ls03[index][0] + '_eiger')
             name_ls03[index].append(name_ls03[index][0] + '_eiger')
 
         # two xas, two xrd
-        name_ls04 = [['MAPbBrI_DMSO_2ME_coat08b'],
+        # 20220660
+        name_ls04 = [['MAPbBrI_DMF_coat005'],
+                     ['MAPbBrI_DMF_coat001'],
+                     ['MAPbBrI_DMSO_2ME_coat08b'],
                      ['MAPbBrI_DMSO_2ME_coat009b'],
-                     # ['MAPbBrI_DMSO_2ME_coat013'], # no xas
+                     ['MAPbBrI_DMSO_2ME_coat013'], # no xas
                      ['MAPbBrI_DMSO_2ME_coat014b'],
                      ['MAPbBrI_DMSO_2ME_coat015b'],
                      ['MAPbBrI_DMSO_2ME_coat017a'],
-                     ['test_thickness']]
+                     ['test_thickness']
+                     ]
+
+        # 20221562
+        name_ls04_0 = [['MAPbBrI_DMF_coat001'],
+                     ['MAPbBrI_DMF_coat002'],
+                     ['MAPbBrI_DMF_coat003b'],
+                     ['MAPbBrI_DMF_coat005'],
+                     ['MAPbBrI_2ME_DMF_coat006a'],
+                     ['MAPbBrI_2ME_DMF_coat007a'],
+                     ['MAPbBrI_2ME_DMF_coat008'],
+                     ]
+
+        name_ls04 = [['MAPbBrI_DMSO_coat010b'],
+                     ['MAPbBrI_DMSO_coat010b_annealed_BeamDamage'],
+                     ['MAPbBrI_DMSO_coat011_03'],
+                     ['MAPbBrI_DMSO_coat012'],
+                     ['MAPbBrI_2ME_DMSO_coat013a'],
+                     ['MAPbBrI_2ME_DMSO_coat014'],
+                     ['MAPbBrI_2ME_DMSO_coat015a'],
+                     ]
+
+        name_ls04_2 = [['Br_I_2syringe_coat017c_XAS-XRD'],
+                     ['Br_I_2syringe_coat018c'],
+                     ['Br_I_2syringe_coat020'],
+                     ]
+
 
         for index in range(len(name_ls04)):
             name_ls04[index].append(name_ls04[index][0])
@@ -258,22 +308,22 @@ class ShowData(QMainWindow):
         name_list_ref1 = ['MACl1M_DMF_airblade_QXRD_coat006',
                           'MACl1M_DMF_airblade_QXRD_coat006a',
                           'MACl1M_DMF_airblade_QXRD_coat007',
-                          # 'MAPbI_DMSO_2ME_coat10', # no xas
+                          'MAPbI_DMSO_2ME_coat10', # no xas
                           'MAPbI_DMSO_2ME_coat11',
                           'MAPbI_DMSO_2ME_coat12',
+                          'MAPbI_DMSO_2ME_coat13',
                           'MAPbI_DMSO_2ME_coat16',
-                          # 'MAPbI_DMSO_2ME_coat18', # no xas
+                          'MAPbI_DMSO_2ME_coat18', # no xas
                           'MAFAPbI_DME_coat20']
 
-        name_list_ref3 = [# 'MACl1M_DMF_slow_dry_coat004d',
-                          # 'MACl1M_DMF_slow_dry_coat004f',
+        name_list_ref3 = ['MACl1M_DMF_slow_dry_coat004d',
+                          'MACl1M_DMF_slow_dry_coat004f',
                           'MACl1M_DMF_slow_dry_coat005',
                           'MAFAPbI_DME_coat21',
                           'MAFAPbI_DME_coat22']
 
         name_list_ref4 = ['MAPbI_DMSO_2ME_coat8',
                           'MAPbI_DMSO_2ME_coat9b',
-                          # 'MAPbI_DMSO_2ME_coat13',
                           'MAPbI_DMSO_2ME_coat14',
                           'MAPbI_DMSO_2ME_coat15',
                           'MAPbI_DMSO_2ME_coat17',
@@ -284,20 +334,24 @@ class ShowData(QMainWindow):
 
         # name_list = name_ls01 # one xrd
         # name_list = name_ls02 # two xas, one xrd
-        # name_list = name_ls03 # one xas, two xrd
-        name_list = name_ls04 # two xas, two xrd
+        name_list = name_ls03 # one xas, two xrd
+        # name_list = name_ls04 # two xas, two xrd
         # name_list = []
         # name_list_refl = name_list_ref1
         # name_list_refl = name_list_ref3
-        name_list_refl = name_list_ref4
+        # name_list_refl = name_list_ref4
 
         # file_directory = r"Y:\20220720\2022042008"
-        # file_directory = r"W:balder\20220660\2022101308"
-        file_directory = r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform'
-        poni_file1 = 'LaB6_12936p37eV_realCalib_sum.poni'
-        poni_file2 = 'LaB6_13591p12eV_realCalib_sum.poni'
+        # file_directory = r"Y:\20220660\2022101308"
+        file_directory = r'W:balder\20221562\2022120808' # remember to add "balder" accordingly in azint section
+        # file_directory = r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform'
+        # poni_file1 = 'LaB6_12936p37eV_realCalib_sum.poni'
+        # poni_file2 = 'LaB6_13591p12eV_realCalib_sum.poni'
+        poni_file1 = 'LaB6_12keV_accurate.poni'
+        poni_file2 = 'LaB6_14keV_accurate.poni'
+        poni_file3 = 'LaB6_13875eV_realCalib_sum.poni' # for 2 xrd 2 xas data with Br edge covered
         file_apdx = '_resultCluster.h5'
-        refl_directory = r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform'  # file_directory
+        # refl_directory = r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform'  # file_directory
         # refl_directory = r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData"
         # if name_list != []:
         self.repeat = len(name_list)  # number of xas or xrd
@@ -342,21 +396,21 @@ class ShowData(QMainWindow):
                                                             'PONI file': poni_file1,
                                                             'time interval(ms)':str(time_intevals[k])}
         # if name_list_refl != []:
-        for index in range(len(name_list_refl)):
-            self.path_name_dict['refl_' + str(index + 1)] = {'directory': refl_directory,
-                                                             'raw file': name_list_refl[index],
-                                                             'align data number':'3022',
-                                                             'to time':'2022-04-23T12:02:44'
+        # for index in range(len(name_list_refl)):
+            # self.path_name_dict['refl_' + str(index + 1)] = {'directory': refl_directory,
+            #                                                  'raw file': name_list_refl[index],
+                                                             # 'align data number':'3022',
+                                                             # 'to time':'2022-04-23T12:02:44'
                                                              }
 
-        self.path_name_dict['refl_1'] = {'directory': r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
-                                       'raw file': 'test_1M_MACl_1M_MAFAPbI3_Refl'}
-        self.path_name_dict['refl_2'] = {'directory': r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
-                                       'raw file': 'test_1M_MACl_1M_MAFAPbI3_2_Refl'}
-        self.path_name_dict['pl_1'] = {'directory':r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
-                                         'raw file': 'test_1M_MACl_1M_MAFAPbI3_PL'}
-        self.path_name_dict['pl_2'] = {'directory': r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
-                                     'raw file': 'test_1M_MACl_1M_MAFAPbI3_2_PL'}
+        # self.path_name_dict['refl_1'] = {'directory': r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
+        #                                'raw file': 'test_1M_MACl_1M_FAPbI3'}
+        # self.path_name_dict['refl_2'] = {'directory': r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
+        #                                'raw file': 'test_1M_MACl_1M_MAFAPbI3_2_Refl'}
+        # self.path_name_dict['pl_1'] = {'directory':r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
+        #                                  'raw file': 'test_1M_MACl_1M_MAFAPbI3_PL'}
+        # self.path_name_dict['pl_2'] = {'directory': r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
+        #                              'raw file': 'test_1M_MACl_1M_MAFAPbI3_2_PL'}
 
     def choose_data_read_mode(self, action):
         for index in range(self.repeat):
