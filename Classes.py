@@ -2032,7 +2032,7 @@ class XRD(Methods_Base):
         else:
             print('reload xrd!')
 
-        if '20221562' in self.directory.split('\\'):
+        if ('20221562' in self.directory.split('\\')) or ('20221478' in self.directory.split('\\')):
             self.exportdir = os.path.join(self.directory, 'process', self.fileshort + '_{}keV'.format(int(energy)))
             self.exportfile = os.path.join(self.exportdir,self.fileshort + '_{}keV'.format(int(energy)) + self.intfile_appendix)
         else:
