@@ -2041,10 +2041,11 @@ class XRD(Methods_Base):
 
         self.entrytimesec = []
         self.cells_sort = {}
+        self.raw_tot = []
 
-        # glitches in q
-        self.glitches = [[1.94804, 1.95192],
-                         [2.41443, 2.41831]]  # based on reading on plot
+        # glitches in q, this should be dependent on experiment!
+        # self.glitches = [[1.94804, 1.95192],
+        #                  [2.41443, 2.41831]]  # based on reading on plot
         # ref
         self.ref_phase = {'FAPbI3': {'color': 'y',  # no black color, light color is better
                                      'Bravais': 2,
@@ -3644,24 +3645,26 @@ class XRD_INFORM_2(XRD): # 20220660
     def read_data_index(self, index): # for raw img
         files = glob.glob(os.path.join(self.directory,'raw',
                                         self.fileshort[0:-6] + self.eiger_mark))
-        if not hasattr(self, 'raw_tot'):
-            tot_num = [0]
-            for fi in files:
-                with h5py.File(fi,'r') as f:
-                    tot_num.append(f[self.rawdata_path].shape[0] + tot_num[-1])
-
-            self.raw_tot = tot_num
+        # if len(self.raw_tot) == 0:
+        #     tot_num = [0]
+        #     for fi in files:
+        #         with h5py.File(fi,'r') as f:
+        #             tot_num.append(f[self.rawdata_path].shape[0] + tot_num[-1])
+        #
+        #     self.raw_tot = tot_num
 
         if ev2nm / self.wavelength * 10 > self.energy_div: index = index * 2 + 1
         else: index = index * 2
 
-        for i in range(len(self.raw_tot) - 1):
-            if self.raw_tot[i] <= index < self.raw_tot[i + 1]:
-                with h5py.File(files[i], 'r') as f:
-                    rawdata = f[self.rawdata_path]
-                    self.rawdata = np.zeros((rawdata.shape[1],rawdata.shape[2]), dtype='uint32')
-                    rawdata.read_direct(self.rawdata, source_sel=np.s_[index - self.raw_tot[i], :, :])
-                    self.rawdata = np.log10(self.rawdata).transpose()
+        # for i in range(len(self.raw_tot) - 1):
+        #     if self.raw_tot[i] <= index < self.raw_tot[i + 1]:
+        # with h5py.File(files[i], 'r') as f:
+        with h5py.File(files[0], 'r') as f:
+            rawdata = f[self.rawdata_path]
+            self.rawdata = np.zeros((rawdata.shape[1],rawdata.shape[2]), dtype='uint32')
+            # rawdata.read_direct(self.rawdata, source_sel=np.s_[index - self.raw_tot[i], :, :])
+            rawdata.read_direct(self.rawdata, source_sel=np.s_[index, :, :])
+            self.rawdata = np.log10(self.rawdata).transpose()
 
     def plot_from_prep(self, winobj):  # do integration; some part should be cut out to make a new function
         # if winobj.slideradded == False:
@@ -4032,7 +4035,7 @@ class XRD_INFORM_3_ONLY(XRD_INFORM_2_ONLY):
             files = glob.glob(os.path.join(self.directory,'raw',
                                            self.fileshort + self.eiger_mark))
 
-        if not hasattr(self, 'raw_tot'):
+        if len(self.raw_tot) == 0:
             tot_num = [0]
             for fi in files:
                 with h5py.File(fi,'r') as f:

@@ -178,7 +178,7 @@ class ShowData(QMainWindow):
         read_mode_group.triggered.connect(self.choose_data_read_mode)
 
     def fill_pnd(self, name_list, name_list_refl, name_list_pl, name_list_xrf,
-                 poni_file1, poni_file2, file_directory, refl_directory, xrf_directory):
+                 poni_file1, poni_file2, time_intevals, file_directory, refl_directory, xrf_directory):
         file_apdx = '_resultCluster.h5'
         self.repeat = len(name_list)  # number of xas or xrd
         for k in range(len(name_list)):
@@ -345,7 +345,7 @@ class ShowData(QMainWindow):
         xrf_directory = []
 
         self.fill_pnd(name_list, name_list_refl, name_list_pl, name_list_xrf,
-                      poni_file1, poni_file2, file_directory,
+                      poni_file1, poni_file2, time_intevals, file_directory,
                       refl_directory, xrf_directory)
 
     # 20220660 in Oct 2022
@@ -448,7 +448,7 @@ class ShowData(QMainWindow):
         xrf_directory = []
 
         self.fill_pnd(name_list, name_list_refl, name_list_pl, name_list_xrf,
-                      poni_file1, poni_file2, file_directory,
+                      poni_file1, poni_file2, time_intevals, file_directory,
                       refl_directory, xrf_directory)
 
     # 20221562 in Dec 2022
@@ -562,22 +562,57 @@ class ShowData(QMainWindow):
         xrf_directory = []
 
         self.fill_pnd(name_list, name_list_refl, name_list_pl, name_list_xrf,
-                      poni_file1, poni_file2, file_directory,
+                      poni_file1, poni_file2, time_intevals, file_directory,
                       refl_directory, xrf_directory)
     # 20221478 in Mar 2023
     def fill_path_name_dict_2023Mar(self):
         # xrd only, name and time
         name_ls01 = [  # ['testqxrd_01_eiger'], # caution: must be with _eiger and nothing else!!!
-            ['FPI50_MPBr50_coat025_01_qxrd_eiger'],
-            ['FPI50_MPBr50_coat025_02_qxrd_eiger'],
-            ['FPI50_MPBr50_coat025_03_qxrd_eiger'],
+            ['MAPbBr_DMSO_coat18_qxrd_eiger'],
+            ['MAPbBr_DMSO_coat19_qxrd_aboveEdge_eiger'],
+            ['MAPbBr_DMSO_coat20_01_qxrd_eiger'],
+            ['MAPbBr_DMSO_coat20_02_qxrd_eiger'],
+            ['MAPbBr_DMSO_coat20_03_qxrd_eiger'],
+            ['MAPbBr_DMSO_coat20_04_qxrd_eiger'],
+            ['MAPbBr_DMSO_coat20_05_qxrd_eiger'],
+            ['MAPbBr_DMSO_coat20_06_qxrd_eiger'],
+            ['MAPbBr_DMSO_coat20_07_qxrd_eiger'],
+            ['MAPbBr_DMSO_coat20_08_qxrd_eiger'],
+            ['MAPbBr_DMSO_coat20_09_qxrd_eiger'],
+            ['MAPbBr05I05_DMSO_coat21_01_qxrd_eiger'],
+            ['MAPbBr05I05_DMSO_coat21_02_qxrd_eiger'],
+            ['MAPbBr05I05_DMSO_coat21_03_qxrd_eiger'],
+            ['MAPbBr05I05_DMSO_coat21_04_qxrd_eiger'],
+            ['MAPbBr05I05_DMSO_coat21_05_qxrd_eiger'],
+            ['MAPbBr05I05_DMSO_coat21_06_qxrd_eiger'],
+            ['MAPbI_DMSO_coat22_01_qxrd_1_eiger'], # ?
+            ['MAPbI_DMSO_coat22_01_qxrd_eiger'],
+            ['MAPbI_DMSO_coat22_02_qxrd_eiger'],
+            ['MAPbI_DMSO_coat22_03_qxrd_eiger'],
+            ['MAPbI_DMSO_coat22_04_qxrd_eiger'],
+            ['MAPbI_DMSO_coat22_05_qxrd_eiger'],
+            ['MAPbI_DMSO_coat22_06_qxrd_eiger'],
+            ['MAPbBr06I04_DMSO_coat23_01_qxrd_eiger'],
+            ['MAPbBr06I04_DMSO_coat23_02_qxrd_eiger'],
+            ['MAPbBr06I04_DMSO_coat23_03_qxrd_eiger'],
+            ['MAPbBr06I04_DMSO_coat23_04_qxrd_eiger'],
             ['MAPbBr06I04_DMSO_coat23_05_qxrd_eiger'],  # this one is always 100 ms, watch out
             ['MAPbBr04I06_DMSO_coat24_01_qxrd_eiger'],
             ['MAPbBr04I06_DMSO_coat24_02_qxrd_eiger'],
-            ['MAPbBr04I06_DMSO_coat24_03_qxrd_eiger']
+            ['MAPbBr04I06_DMSO_coat24_03_qxrd_eiger'],
+            ['FPI50_MPBr50_coat025_01_qxrd_eiger'],
+            ['FPI50_MPBr50_coat025_02_qxrd_eiger'],
+            ['FPI50_MPBr50_coat025_03_qxrd_eiger'],
+            ['FPI40_MPBr60_coat026_01_xas_eiger'],
+            ['FPI40_MPBr60_coat026_02_xas_eiger'],
+            ['FPI40_MPBr60_coat026_03_xas_eiger'],
+            ['FPI60_MPBr40_coat027_01_qxrd_eiger'],
+            ['FPI60_MPBr40_coat027_02_qxrd_eiger'],
+            ['FPI60_MPBr40_coat027_03_qxrd_eiger'],
         ]
 
-        time_intevals = [20, 20, 20, 100, 20, 20, 20]
+        time_intevals = [20] * len(name_ls01)
+        time_intevals[28] = 100
 
         # one xas, two xrd
         name_ls03 = [ # ['LaB6_ref_scan_01'],
@@ -589,11 +624,9 @@ class ShowData(QMainWindow):
                      ['MFPI_2MACl_coat007_1'], # 120 C
                      ['MFPI_2MACl_coat008'], # 130 C, not fully formed
                      ['MFPI_2MACl_coat009_01'], # 140 C
-                     ]
-
-        name_ls03 = [['MFPI_2MACl_coat10_01'],# 112 C to 140 C, not formed
-                     ['MFPI_2MACl_coat11_01'],# r.t dry part one
-                     ['MFPI_2MACl_coat11_02'], # r.t dry part two
+                     ['MFPI_2MACl_coat10_01'],  # 112 C to 140 C, not formed
+                     ['MFPI_2MACl_coat11_01'],  # r.t dry part one
+                     ['MFPI_2MACl_coat11_02'],  # r.t dry part two
                      ['MFPI_1MACl_coat12'], # redundant, same as coat14
                      ['MFPI_MACl_coat13'], # 0.25 M MACl
                      ['MFPI_MACl_coat14'], # 0.5 M MACl
@@ -615,8 +648,19 @@ class ShowData(QMainWindow):
             name_ls04[index].append(name_ls04[index][0] + '_eiger')
             name_ls04[index].append(name_ls04[index][0] + '_eiger')
 
-        name_list_ref1 = ['MACl1M_DMF_airblade_QXRD_coat006',
-                          'MAFAPbI_DME_coat20']
+        name_list_ref1 = ['MPBr_coat018',
+                          'MPBr_DMSO_coat19',
+                          'MPBr_DMSO_coat20',
+                          'MPBr05I05_DMSO_coat21',
+                          'MPI_DMSO_coat22',
+                          'MPBr06I04_DMSO_coat23',
+                          'MPBr06I04_DMSO_coat23_beamDamage',
+                          'MPBr04I06_DMSO_coat24',
+                          'FPI50_MPBr50_coat25',
+                          'FPI80_MPBr20_coat26',
+                          'FPI40_MPBr60_coat26',
+                          'FPI60_MPBr40_coat27',
+                          ]
 
         name_list_ref3 = ['MFPI_coat002',
                           'MFPI_coat003',
@@ -626,9 +670,7 @@ class ShowData(QMainWindow):
                           'MFPI_2MACl_coat007',
                           'MFPI_2MACl_coat008',
                           'MFPI_2MACl_coat009',
-                          ]
-
-        name_list_ref3 = ['MFPI_coat010',
+                          'MFPI_coat010',
                           'MFPI_2MACl_coat011',
                           'MFPI_1MACl_coat012',
                           'MFPI_1MACl_coat013',
@@ -637,25 +679,44 @@ class ShowData(QMainWindow):
                           'MFPI_2ME_NMP_MACl_coat017',
                           ]
 
-        name_list_ref4 = ['MAPbI_DMSO_2ME_coat8',
-                          'MAPbI_DMSO_2ME_coat19']
+        name_list_ref4 = ['example',]
 
         # to change: name_list, poni_file, directory
-        # name_list = name_ls01 # one xrd
+        name_list = name_ls01 # one xrd
         # name_list = name_ls02 # two xas, one xrd
-        name_list = name_ls03  # one xas, two xrd
+        # name_list = name_ls03  # one xas, two xrd
         # name_list = name_ls04 # two xas, two xrd
 
-        # name_list_refl = name_list_ref1
-        name_list_refl = name_list_ref3.copy()
-        # name_list_refl = name_list_ref4
-        name_list_pl = name_list_ref3.copy()
+        name_list_refl = name_list_ref1.copy()
+        # name_list_refl = name_list_ref3.copy()
+        # name_list_refl = name_list_ref4.copy()
+        name_list_pl = name_list_ref1.copy()
+        # name_list_pl = name_list_ref3.copy()
+        # name_list_pl = name_list_ref4.copy()
 
         for index in range(len(name_list_refl)):
             name_list_refl[index] = name_list_refl[index] + '_Refl'
             name_list_pl[index] = name_list_pl[index] + '_PL'
 
-        name_list_xrf3 = ['coat10_MFPI_2MACl_DMF',
+        name_list_xrf1 = ['coat18_MPBr_DMSO',
+                          'coat19_MPBr_DMSO', # merged with 20
+                          'coat21_MPBr0.5I0.5_DMSO',
+                          'coat22_MPI_DMSO',
+                          'coat23_MPBr60I40_DMSO',
+                          'coat23_MPBr60I40_DMSO_degrad',
+                          'coat24_MPBr40I60_DMSO',
+                          'coat25_FPI40_MPBr60', # merged with 26, 27
+                          ]
+
+        name_list_xrf3 = ['coat2_MFPI_DMF',
+                          'coat3_MFPI_DMF',
+                          'coat4_MFPI_DMF',
+                          'coat5_MFPI_DMF',
+                          'coat6_MFPI_2MACl_DMF',
+                          'coat7_MFPI_2MACl_DMF',
+                          'coat8_MFPI_2MACl_DMF',
+                          'coat9_MFPI_2MACl_DMF',
+                          'coat10_MFPI_2MACl_DMF',
                           'coat11_MFPI_2MACl_DMF',
                           'coat12_MFPI_1MACl_DMF',
                           'coat13_MFPI_MACl_DMF',
@@ -674,7 +735,7 @@ class ShowData(QMainWindow):
         xrf_directory = file_directory
 
         self.fill_pnd(name_list, name_list_refl, name_list_pl, name_list_xrf,
-                      poni_file1, poni_file2, file_directory,
+                      poni_file1, poni_file2, time_intevals, file_directory,
                       refl_directory, xrf_directory)
 
     def choose_data_read_mode(self, action):
