@@ -47,6 +47,7 @@ from Classes import *
 from draggabletabwidget_new import *
 
 import ast
+import faulthandler
 
 def make_dpi_aware():
     if int(platform.release()) >= 8:
@@ -105,6 +106,7 @@ class ShowData(QMainWindow):
 
         self.controls = QDockWidget('Parameters', self)
         self.controls.setMaximumWidth(int(self.screen_width * .2))
+        self.controls.setMinimumWidth(int(self.screen_width * .1))
 
         self.controltabs = DraggableTabWidget()
         # self.test = QTabWidget()
@@ -116,7 +118,12 @@ class ShowData(QMainWindow):
         pg.setConfigOption('leftButtonPan', False)
 
         self.cboxes = QToolBox()
-        self.controltabs.addTab(self.cboxes,"Checkboxes")
+        self.cboxes.setMinimumHeight(int(screen_height * 1.5)) # hope this can make it a bit more spacious
+        self.scroll_area = QScrollArea() #
+        self.scroll_area.setWidget(self.cboxes) #
+        self.scroll_area.setWidgetResizable(True) # this line is the key, OMG!!!
+        self.controltabs.addTab(self.scroll_area, "Checkboxes") #
+        # self.controltabs.addTab(self.cboxes,"Checkboxes")
         self.controls.setWidget(self.controltabs)
         self.controls.setFloating(False)
 
@@ -124,7 +131,9 @@ class ShowData(QMainWindow):
 
         self.gdockdict = dict() # a dic for all top-level graph dock widgets: xas, xrd,...
         self.methodict = dict() # a dic for all available methods: xas, xrd,... there should be only one type each!
-        self.data_read_dict = {'20220660_inform': {'xas':XAS_INFORM_2, 'xrd': XRD_INFORM_2},
+        self.data_read_dict = {'20221478_inform': {'xas':XAS_INFORM_2, 'xrd': XRD_INFORM_3, 'xrf': XRF},
+                               '20221478_inform_xrd_only': {'xas': XAS_INFORM_2, 'xrd': XRD_INFORM_3_ONLY},
+                               '20220660_inform': {'xas':XAS_INFORM_2, 'xrd': XRD_INFORM_2},
                                '20220660_inform_xrd_only': {'xas': XAS_INFORM_2, 'xrd': XRD_INFORM_2_ONLY},
                                '20220720_inform': {'xas': XAS_INFORM_1, 'xrd': XRD_INFORM_1},
                                '20220720_inform_xrd_only': {'xas': XAS_INFORM_1, 'xrd': XRD_INFORM_1_ONLY},
@@ -157,203 +166,20 @@ class ShowData(QMainWindow):
         self.cboxwidget = {}
         self.subcboxverti = {}
         self.path_name_dict = {}
-        self.fill_path_name_dict()
+
+        self.fill_path_name_dict_2023Mar()
+        # self.fill_path_name_dict_2022Dec()
+        # self.fill_path_name_dict_2022Oct() # 20220660
+        # self.fill_path_name_dict_2022April()
+
         self.path_name_widget = {}
         self.methodclassdict = {}  # a dic for preparing corresponding Class
 
         read_mode_group.triggered.connect(self.choose_data_read_mode)
 
-    def fill_path_name_dict(self):
-        name_ls01 = [['Coat1_FAPI_05MCl_2',
-                      'Coat1_FAPI_05MCl_12'],
-                     ['Coat1_FAPI_05MCl_Tramp_1',
-                      'Coat1_FAPI_05MCl_Tramp_14'],
-                     ['Coat4_2S_FAPI_MACl05M_2',
-                      'Coat4_2S_FAPI_MACl05M_26'],
-                     ['Coat4b_2S_FAPI_MACl05M_XAS_XRD_100C_1',
-                      'Coat4b_2S_FAPI_MACl05M_XAS_XRD_100C_38'],
-                     ['Coat4c_2S_FAPI_MACl05M_XAS_XRD_RT_1',
-                      'Coat4c_2S_FAPI_MACl05M_XAS_XRD_RT_39'],
-                     ['Coat5_12S_FAPI_MACl01M_XAS_XRD_3',
-                      'Coat5_12S_FAPI_MACl01M_XAS_XRD_33'],
-                     ['Coat5_12S_FAPI_MACl01M_XAS_XRD_100C_2',
-                      'Coat5_12S_FAPI_MACl01M_XAS_XRD_100C_37'],
-                     ['Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_1',
-                      'Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_40'],
-                     ['Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_2',
-                      'Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_41']]
-
-        # two xas, one xrd
-        name_ls02 = [['Coat6_12S_FAPI_Br02M_Cl01M_RT_6',
-                      'Coat6_12S_FAPI_Br02M_Cl01M_RT_6',
-                      'Coat6_12S_FAPI_Br02M_Cl01M_RT_48'],
-                     ['Coat6b_12S_FAPI_Br02M_Cl01M_heat_1',
-                      'Coat6b_12S_FAPI_Br02M_Cl01M_heat_1',
-                      'Coat6b_12S_FAPI_Br02M_Cl01M_heat_53'],
-                     ['Coat7_12S_FAPI_Br06M_Cl01M_RT_1',
-                      'Coat7_12S_FAPI_Br06M_Cl01M_RT_1',
-                      'Coat7_12S_FAPI_Br06M_Cl01M_RT_51'],
-                     ['Coat7_12S_FAPI_Br06M_Cl01M_heat_1',
-                      'Coat7_12S_FAPI_Br06M_Cl01M_heat_1',
-                      'Coat7_12S_FAPI_Br06M_Cl01M_heat_52']]
-
-        # xrd only, name and time
-        # 20220660
-        name_ls01 = [['MACl1M_DMF_airblade_QXRD_coat006_eiger',],
-                     ['MACl1M_DMF_airblade_QXRD_coat006a_eiger'],
-                     ['MACl1M_DMF_airblade_QXRD_coat007_eiger'],
-                     ['Br_I_2syringe_coat017b_QXRD_eiger'], # be careful with this one, no xas!
-                     ['MAPbBrI_DMSO_2ME_coat011_eiger'],
-                     ['MAPbBrI_DMSO_2ME_coat012_eiger'],
-                     ['MAPbBrI_DMSO_2ME_coat013_eiger'],
-                     ['MAPbBrI_DMSO_2ME_coat013_eiger'],
-                     ['MAPbBrI_DMSO_2ME_coat016_eiger'],
-                     ['MAPbBrI_DMSO_2ME_coat018_eiger'], # no xas
-                     ['MAFAPbI_DMF_coat020_eiger']]
-
-        time_intevals = [10,10,10,100,100,100,4500,4500,10,200,10] # mapping above one by one, in ms
-
-        # 20221562
-        name_ls01 = [['MAPbBrI_DMF_coat002_QXRD'],
-                     ['MAPbBrI_DMF_coat004_QXRD'],
-                     ['MAPbBrI_2ME_DMF_coat009_QXRD'],
-                     ['MAPbBrI_DMSO_coat011_QXRD'],
-                     ['MAPbBrI_2ME_DMSO_coat016c_QXRD'],
-                     ['Br_I_2syringe_coat017c_QXRD'],
-                     ['Br_I_2syringe_coat019b_QXRD'],
-                     ]
-
-        # one xas, two xrd
-        # 20220660
-        name_ls03 = [['LaB6'],
-                     ['MACl1M_DMF_slow_dry_coat004d'],
-                     ['MACl1M_DMF_slow_dry_coat004fb'],
-                     ['MACl1M_DMF_slow_dry_coat005'],
-                     ['MACl1M_DMF_airblade_QXRD_coat007a'],
-                     ['MAFAPbI_DMF_coat021'],
-                     ['MAFAPbI_DMF_coat022g'],
-                     ['MACl3M_coat023a']]
-
-        # 20221562
-        name_ls03 = [['MAFAPbI3_MACl_2ME_NMP_coat021'],
-                     # ['MAFAPbI3_MACl_DMF_coat022a']
-                     ]
-
-        for index in range(len(name_ls03)):
-            name_ls03[index].append(name_ls03[index][0] + '_eiger')
-            name_ls03[index].append(name_ls03[index][0] + '_eiger')
-
-        # two xas, two xrd
-        # 20220660
-        name_ls04 = [['MAPbBrI_DMF_coat005'],
-                     ['MAPbBrI_DMF_coat001'],
-                     ['MAPbBrI_DMSO_2ME_coat08b'],
-                     ['MAPbBrI_DMSO_2ME_coat009b'],
-                     ['MAPbBrI_DMSO_2ME_coat013'], # no xas
-                     ['MAPbBrI_DMSO_2ME_coat014b'],
-                     ['MAPbBrI_DMSO_2ME_coat015b'],
-                     ['MAPbBrI_DMSO_2ME_coat017a'],
-                     ['test_thickness']
-                     ]
-
-        # 20221562
-        name_ls04_0 = [['MAPbBrI_DMF_coat001'],
-                     ['MAPbBrI_DMF_coat002'],
-                     ['MAPbBrI_DMF_coat003b'],
-                     ['MAPbBrI_DMF_coat005'],
-                     ['MAPbBrI_2ME_DMF_coat006a'],
-                     ['MAPbBrI_2ME_DMF_coat007a'],
-                     ['MAPbBrI_2ME_DMF_coat008'],
-                     ]
-
-        name_ls04 = [['MAPbBrI_DMSO_coat010b'],
-                     ['MAPbBrI_DMSO_coat010b_annealed_BeamDamage'],
-                     ['MAPbBrI_DMSO_coat011_03'],
-                     ['MAPbBrI_DMSO_coat012'],
-                     ['MAPbBrI_2ME_DMSO_coat013a'],
-                     ['MAPbBrI_2ME_DMSO_coat014'],
-                     ['MAPbBrI_2ME_DMSO_coat015a'],
-                     ]
-
-        name_ls04_2 = [['Br_I_2syringe_coat017c_XAS-XRD'],
-                     ['Br_I_2syringe_coat018c'],
-                     ['Br_I_2syringe_coat020'],
-                     ]
-
-
-        for index in range(len(name_ls04)):
-            name_ls04[index].append(name_ls04[index][0])
-            name_ls04[index].append(name_ls04[index][0] + '_eiger')
-            name_ls04[index].append(name_ls04[index][0] + '_eiger')
-
-        name_list_ref1 = ['Coat1_FAPbI_Cl05M_Refl',
-                          'Coat04_Refl',
-                          'Coat04b_Refl',
-                          'Coat04c_Refl',
-                          'Coat05_Refl',
-                          'Coat05b_Refl']
-
-        name_list_ref2 = ['Coat_06_Br02_Refl',
-                          'Coat_07_Br06_Refl',
-                          'Coat_07B_Refl',
-                          'Coat_07B_after_Refl']
-
-        name_list_ref1 = ['Ref_test_Refl',
-                          'Ref_airblade_Refl',
-                          'Ref_heating_after_airblade_Refl',
-                          'Ref_heat_Refl',
-                          'Ref_heat_150_Refl',
-                          'Ref_heat_150_again_Refl']
-
-        name_list_ref1 = ['MACl1M_DMF_airblade_QXRD_coat006',
-                          'MACl1M_DMF_airblade_QXRD_coat006a',
-                          'MACl1M_DMF_airblade_QXRD_coat007',
-                          'MAPbI_DMSO_2ME_coat10', # no xas
-                          'MAPbI_DMSO_2ME_coat11',
-                          'MAPbI_DMSO_2ME_coat12',
-                          'MAPbI_DMSO_2ME_coat13',
-                          'MAPbI_DMSO_2ME_coat16',
-                          'MAPbI_DMSO_2ME_coat18', # no xas
-                          'MAFAPbI_DME_coat20']
-
-        name_list_ref3 = ['MACl1M_DMF_slow_dry_coat004d',
-                          'MACl1M_DMF_slow_dry_coat004f',
-                          'MACl1M_DMF_slow_dry_coat005',
-                          'MAFAPbI_DME_coat21',
-                          'MAFAPbI_DME_coat22']
-
-        name_list_ref4 = ['MAPbI_DMSO_2ME_coat8',
-                          'MAPbI_DMSO_2ME_coat9b',
-                          'MAPbI_DMSO_2ME_coat14',
-                          'MAPbI_DMSO_2ME_coat15',
-                          'MAPbI_DMSO_2ME_coat17',
-                          'MAPbI_DMSO_2ME_coat19']
-
-        name_list_ref1 = ['test_old_Br_ink_Refl',
-                          'test_old_Br_ink_2_Refl']
-
-        # name_list = name_ls01 # one xrd
-        # name_list = name_ls02 # two xas, one xrd
-        name_list = name_ls03 # one xas, two xrd
-        # name_list = name_ls04 # two xas, two xrd
-        # name_list = []
-        # name_list_refl = name_list_ref1
-        # name_list_refl = name_list_ref3
-        # name_list_refl = name_list_ref4
-
-        # file_directory = r"Y:\20220720\2022042008"
-        # file_directory = r"Y:\20220660\2022101308"
-        file_directory = r'W:balder\20221562\2022120808' # remember to add "balder" accordingly in azint section
-        # file_directory = r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform'
-        # poni_file1 = 'LaB6_12936p37eV_realCalib_sum.poni'
-        # poni_file2 = 'LaB6_13591p12eV_realCalib_sum.poni'
-        poni_file1 = 'LaB6_12keV_accurate.poni'
-        poni_file2 = 'LaB6_14keV_accurate.poni'
-        poni_file3 = 'LaB6_13875eV_realCalib_sum.poni' # for 2 xrd 2 xas data with Br edge covered
+    def fill_pnd(self, name_list, name_list_refl, name_list_pl, name_list_xrf,
+                 poni_file1, poni_file2, file_directory, refl_directory, xrf_directory):
         file_apdx = '_resultCluster.h5'
-        # refl_directory = r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform'  # file_directory
-        # refl_directory = r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData"
-        # if name_list != []:
         self.repeat = len(name_list)  # number of xas or xrd
         for k in range(len(name_list)):
             if len(name_list[k]) > 1:
@@ -395,13 +221,28 @@ class ShowData(QMainWindow):
                                                             'integration file appendix': file_apdx,
                                                             'PONI file': poni_file1,
                                                             'time interval(ms)':str(time_intevals[k])}
-        # if name_list_refl != []:
-        # for index in range(len(name_list_refl)):
-            # self.path_name_dict['refl_' + str(index + 1)] = {'directory': refl_directory,
-            #                                                  'raw file': name_list_refl[index],
-                                                             # 'align data number':'3022',
-                                                             # 'to time':'2022-04-23T12:02:44'
-                                                             }
+        if name_list_refl != []:
+            for index in range(len(name_list_refl)):
+                self.path_name_dict['refl_' + str(index + 1)] = {'directory': refl_directory,
+                                                                 'raw file': name_list_refl[index],
+                                                                 # 'align data number':'3022',
+                                                                 # 'to time':'2022-04-23T12:02:44'
+                                                                 }
+        if name_list_pl != []:
+            for index in range(len(name_list_refl)):
+                self.path_name_dict['pl_' + str(index + 1)] = {'directory': refl_directory,
+                                                                 'raw file': name_list_pl[index],
+                                                                 # 'align data number':'3022',
+                                                                 # 'to time':'2022-04-23T12:02:44'
+                                                                 }
+
+        if name_list_xrf != []:
+            for index in range(len(name_list_xrf)):
+                self.path_name_dict['xrf' + str(index + 1)] = {'directory': xrf_directory,
+                                                               'raw file': name_list_xrf[index],
+                                                               # 'align data number': '3022',
+                                                               # 'to time': '2022-04-23T12:02:44'
+                                                               }
 
         # self.path_name_dict['refl_1'] = {'directory': r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
         #                                'raw file': 'test_1M_MACl_1M_FAPbI3'}
@@ -411,6 +252,430 @@ class ShowData(QMainWindow):
         #                                  'raw file': 'test_1M_MACl_1M_MAFAPbI3_PL'}
         # self.path_name_dict['pl_2'] = {'directory': r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
         #                              'raw file': 'test_1M_MACl_1M_MAFAPbI3_2_PL'}
+
+    # 20220720 in April 2022: might not have two xrd data
+    def fill_path_name_dict_2022April(self):
+        # one xas, one xrd
+        name_ls01 = [['Coat1_FAPI_05MCl_2',
+                      'Coat1_FAPI_05MCl_12'],
+                     ['Coat1_FAPI_05MCl_Tramp_1',
+                      'Coat1_FAPI_05MCl_Tramp_14'],
+                     ['Coat4_2S_FAPI_MACl05M_2',
+                      'Coat4_2S_FAPI_MACl05M_26'],
+                     ['Coat4b_2S_FAPI_MACl05M_XAS_XRD_100C_1',
+                      'Coat4b_2S_FAPI_MACl05M_XAS_XRD_100C_38'],
+                     ['Coat4c_2S_FAPI_MACl05M_XAS_XRD_RT_1',
+                      'Coat4c_2S_FAPI_MACl05M_XAS_XRD_RT_39'],
+                     ['Coat5_12S_FAPI_MACl01M_XAS_XRD_3',
+                      'Coat5_12S_FAPI_MACl01M_XAS_XRD_33'],
+                     ['Coat5_12S_FAPI_MACl01M_XAS_XRD_100C_2',
+                      'Coat5_12S_FAPI_MACl01M_XAS_XRD_100C_37'],
+                     ['Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_1',
+                      'Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_40'],
+                     ['Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_2',
+                      'Coat5b_12S_FAPI_MACl01M_XAS_XRD_RT_41']]
+
+        # two xas, one xrd
+        name_ls02 = [['Coat6_12S_FAPI_Br02M_Cl01M_RT_6',
+                      'Coat6_12S_FAPI_Br02M_Cl01M_RT_6',
+                      'Coat6_12S_FAPI_Br02M_Cl01M_RT_48'],
+                     ['Coat6b_12S_FAPI_Br02M_Cl01M_heat_1',
+                      'Coat6b_12S_FAPI_Br02M_Cl01M_heat_1',
+                      'Coat6b_12S_FAPI_Br02M_Cl01M_heat_53'],
+                     ['Coat7_12S_FAPI_Br06M_Cl01M_RT_1',
+                      'Coat7_12S_FAPI_Br06M_Cl01M_RT_1',
+                      'Coat7_12S_FAPI_Br06M_Cl01M_RT_51'],
+                     ['Coat7_12S_FAPI_Br06M_Cl01M_heat_1',
+                      'Coat7_12S_FAPI_Br06M_Cl01M_heat_1',
+                      'Coat7_12S_FAPI_Br06M_Cl01M_heat_52']]
+
+        for index in range(len(name_ls04)):
+            name_ls04[index].append(name_ls04[index][0])
+            name_ls04[index].append(name_ls04[index][0] + '_eiger')
+            name_ls04[index].append(name_ls04[index][0] + '_eiger')
+
+        name_list_ref1 = ['Coat1_FAPbI_Cl05M_Refl',
+                          'Coat04_Refl',
+                          'Coat04b_Refl',
+                          'Coat04c_Refl',
+                          'Coat05_Refl',
+                          'Coat05b_Refl']
+
+        name_list_ref2 = ['Coat_06_Br02_Refl',
+                          'Coat_07_Br06_Refl',
+                          'Coat_07B_Refl',
+                          'Coat_07B_after_Refl']
+
+        # test
+        name_list_ref1 = ['Ref_test_Refl',
+                          'Ref_airblade_Refl',
+                          'Ref_heating_after_airblade_Refl',
+                          'Ref_heat_Refl',
+                          'Ref_heat_150_Refl',
+                          'Ref_heat_150_again_Refl']
+
+        # test
+        name_list_ref1 = ['test_old_Br_ink_Refl',
+                          'test_old_Br_ink_2_Refl']
+
+
+        # to change: name_list, poni_file, directory
+        # name_list = name_ls01 # one xrd
+        # name_list = name_ls02 # two xas, one xrd
+        name_list = name_ls03 # one xas, two xrd
+        # name_list = name_ls04 # two xas, two xrd
+
+        # name_list_refl = name_list_ref1
+        # name_list_refl = name_list_ref3
+        # name_list_refl = name_list_ref4
+        name_list_refl = []
+        name_list_pl = []
+
+        # might not be necessary !!!
+        # for index in range(len(name_list_refl)):
+        #     name_list_refl[index] = name_list_refl[index] + '_Refl'
+        #     name_list_pl[index] = name_list_pl[index] + '_PL'
+
+        file_directory = r"W:balder\20220720\2022042008"
+        refl_directory = r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData"
+        poni_file1 = 'LaB6_12935eV.poni'
+        poni_file2 = 'LaB6_12935eV.poni'
+
+        name_list_xrf = []
+        xrf_directory = []
+
+        self.fill_pnd(name_list, name_list_refl, name_list_pl, name_list_xrf,
+                      poni_file1, poni_file2, file_directory,
+                      refl_directory, xrf_directory)
+
+    # 20220660 in Oct 2022
+    def fill_path_name_dict_2022Oct(self):
+        # xrd only, name and time
+        name_ls01 = [['MACl1M_DMF_airblade_QXRD_coat006_eiger', ],
+                     ['MACl1M_DMF_airblade_QXRD_coat006a_eiger'],
+                     ['MACl1M_DMF_airblade_QXRD_coat007_eiger'],
+                     ['Br_I_2syringe_coat017b_QXRD_eiger'],  # be careful with this one, no xas!
+                     ['MAPbBrI_DMSO_2ME_coat011_eiger'],
+                     ['MAPbBrI_DMSO_2ME_coat012_eiger'],
+                     ['MAPbBrI_DMSO_2ME_coat013_eiger'],
+                     ['MAPbBrI_DMSO_2ME_coat013_eiger'],
+                     ['MAPbBrI_DMSO_2ME_coat016_eiger'],
+                     ['MAPbBrI_DMSO_2ME_coat018_eiger'],  # no xas
+                     ['MAFAPbI_DMF_coat020_eiger']]
+
+        time_intevals = [10, 10, 10, 100, 100, 100, 4500, 4500, 10, 200, 10]  # mapping above one by one, in ms
+
+        # one xas, two xrd
+        name_ls03 = [['LaB6'],
+                     ['MACl1M_DMF_slow_dry_coat004d'],
+                     ['MACl1M_DMF_slow_dry_coat004fb'],
+                     ['MACl1M_DMF_slow_dry_coat005'],
+                     ['MACl1M_DMF_airblade_QXRD_coat007a'],
+                     ['MAFAPbI_DMF_coat021'],
+                     ['MAFAPbI_DMF_coat022g'],
+                     ['MACl3M_coat023a']]
+
+        for index in range(len(name_ls03)):
+            name_ls03[index].append(name_ls03[index][0] + '_eiger')
+            name_ls03[index].append(name_ls03[index][0] + '_eiger')
+
+        # two xas, two xrd
+        name_ls04 = [['MAPbBrI_DMF_coat005'],
+                     ['MAPbBrI_DMF_coat001'],
+                     ['MAPbBrI_DMSO_2ME_coat08b'],
+                     ['MAPbBrI_DMSO_2ME_coat009b'],
+                     ['MAPbBrI_DMSO_2ME_coat013'],  # no xas
+                     ['MAPbBrI_DMSO_2ME_coat014b'],
+                     ['MAPbBrI_DMSO_2ME_coat015b'],
+                     ['MAPbBrI_DMSO_2ME_coat017a'],
+                     ['test_thickness']
+                     ]
+
+        for index in range(len(name_ls04)):
+            name_ls04[index].append(name_ls04[index][0])
+            name_ls04[index].append(name_ls04[index][0] + '_eiger')
+            name_ls04[index].append(name_ls04[index][0] + '_eiger')
+
+        name_list_ref1 = ['MACl1M_DMF_airblade_QXRD_coat006',
+                          'MACl1M_DMF_airblade_QXRD_coat006a',
+                          'MACl1M_DMF_airblade_QXRD_coat007',
+                          'MAPbI_DMSO_2ME_coat10',  # no xas
+                          'MAPbI_DMSO_2ME_coat11',
+                          'MAPbI_DMSO_2ME_coat12',
+                          'MAPbI_DMSO_2ME_coat13',
+                          'MAPbI_DMSO_2ME_coat16',
+                          'MAPbI_DMSO_2ME_coat18',  # no xas
+                          'MAFAPbI_DME_coat20']
+
+        name_list_ref3 = ['MACl1M_DMF_slow_dry_coat004d',
+                          'MACl1M_DMF_slow_dry_coat004f',
+                          'MACl1M_DMF_slow_dry_coat005',
+                          'MAFAPbI_DME_coat21',
+                          'MAFAPbI_DME_coat22']
+
+        name_list_ref4 = ['MAPbI_DMSO_2ME_coat8',
+                          'MAPbI_DMSO_2ME_coat9b',
+                          'MAPbI_DMSO_2ME_coat14',
+                          'MAPbI_DMSO_2ME_coat15',
+                          'MAPbI_DMSO_2ME_coat17',
+                          'MAPbI_DMSO_2ME_coat19']
+
+        # to change: name_list, poni_file, directory
+        # name_list = name_ls01 # one xrd
+        # name_list = name_ls02 # two xas, one xrd
+        name_list = name_ls03  # one xas, two xrd
+        # name_list = name_ls04 # two xas, two xrd
+
+        # name_list_refl = name_list_ref1
+        # name_list_refl = name_list_ref3
+        # name_list_refl = name_list_ref4
+        name_list_refl = []
+        name_list_pl = []
+
+        # might not be necessary !!!
+        # for index in range(len(name_list_refl)):
+        #     name_list_refl[index] = name_list_refl[index] + '_Refl'
+        #     name_list_pl[index] = name_list_pl[index] + '_PL'
+
+        poni_file1 = 'LaB6_12936p37eV_realCalib_sum.poni'
+        poni_file2 = 'LaB6_13591p12eV_realCalib_sum.poni'
+        # poni_file2 = 'LaB6_13875eV_realCalib_sum.poni' # for 2 xrd 2 xas data with Br edge covered
+        file_directory = r"W:balder\20220660\2022101308"
+        # file_directory = r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform'
+        refl_directory = r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20220660_Inform'
+
+        name_list_xrf = []
+        xrf_directory = []
+
+        self.fill_pnd(name_list, name_list_refl, name_list_pl, name_list_xrf,
+                      poni_file1, poni_file2, file_directory,
+                      refl_directory, xrf_directory)
+
+    # 20221562 in Dec 2022
+    def fill_path_name_dict_2022Dec(self):
+        name_ls01 = [['MAPbBrI_DMF_coat002_QXRD_eiger'],
+                     ['MAPbBrI_DMF_coat004_QXRD_eiger'],
+                     ['MAPbBrI_2ME_DMF_coat009_QXRD_eiger'],
+                     ['MAPbBrI_DMSO_coat011_QXRD_eiger'],
+                     ['MAPbBrI_2ME_DMSO_coat016c_QXRD_eiger'],
+                     ['Br_I_2syringe_coat017c_QXRD_eiger'],
+                     ['Br_I_2syringe_coat019b_QXRD_eiger'],
+                     ]
+
+        time_intevals = [20, 20, 20, 20, 20, 20, 20]
+
+        # one xas, two xrd
+        name_ls03 = [['MAFAPbI3_MACl_2ME_NMP_coat021'],
+                       # ['MAFAPbI3_MACl_DMF_coat022a']
+                       ]
+
+        for index in range(len(name_ls03)):
+            name_ls03[index].append(name_ls03[index][0] + '_eiger')
+            name_ls03[index].append(name_ls03[index][0] + '_eiger')
+
+        # two xas, two xrd
+        name_ls04 = [['MAPbBrI_DMF_coat001'],
+                     ['MAPbBrI_DMF_coat002'],
+                     ['MAPbBrI_DMF_coat003b'],
+                     ['MAPbBrI_DMF_coat005'],
+                     ['MAPbBrI_2ME_DMF_coat006a'],
+                     ['MAPbBrI_2ME_DMF_coat007a'],
+                     ['MAPbBrI_2ME_DMF_coat008'],
+                     ]
+
+        name_ls04_1 = [['Br_I_2syringe_coat017c_XAS-XRD'],
+                       ['Br_I_2syringe_coat018c'],
+                       ['Br_I_2syringe_coat020'],
+                       ]
+
+        name_ls04_2 = [['MAPbBrI_DMSO_coat010b'],
+                     ['MAPbBrI_DMSO_coat010b_annealed_BeamDamage'],
+                     ['MAPbBrI_DMSO_coat011_03'],
+                     ['MAPbBrI_DMSO_coat012'],
+                     ['MAPbBrI_2ME_DMSO_coat013a'],
+                     ['MAPbBrI_2ME_DMSO_coat014'],
+                     ['MAPbBrI_2ME_DMSO_coat015a'],
+                     ]
+
+        for index in range(len(name_ls04)):
+            name_ls04[index].append(name_ls04[index][0])
+            name_ls04[index].append(name_ls04[index][0] + '_eiger')
+            name_ls04[index].append(name_ls04[index][0] + '_eiger')
+
+        name_list_opti1 = ['Coat02_MAPbBrI_DMF',
+                           'Coat03_MAPbBrI_DMF',
+                           'Coat05_MAPbBrI_DMF_Refl',
+                           'Coat06_MAPbBrI_2ME_DMF',
+                           'Coat07_MAPbBrI_2ME_DMF',
+                           'Coat08_MAPbBrI_2ME_DMF']
+
+        name_list_opti2 = ['Coat10_MAPbBrI_DMSO',
+                           'Coat11_MAPbBrI_DMSO',
+                           'Coat12_MAPbBrI_DMSO',
+                           'Coat13_MAPbBrI_2ME_DMSO',
+                           'Coat14_MAPbBrI_2ME_DMSO',
+                           'Coat15_MAPbBrI_2ME_DMSO', ]
+
+        name_list_opti3 = ['Coat17_MAPbBrI_mix',
+                           'Coat18_MAPbBrI_mix',
+                           'Coat20_MAPbBrI_mix']
+        # QXRD ???
+        name_list_opti4 = ['Coat02_MAPbBrI_DMF',
+                           'Coat11_MAPbBrI_DMSO',
+                           'Coat16_MAPbBrI_2ME_DMSO',
+                           'Coat17_MAPbBrI_mix',
+                           'Coat19_MAPbBrI_mix']
+
+        # to change: name_list, poni_file, directory
+        # name_list = name_ls01 # one xrd
+        # name_list = name_ls02 # two xas, one xrd
+        name_list = name_ls03  # one xas, two xrd
+        # name_list = name_ls04 # two xas, two xrd
+
+        # name_list_refl = name_list_ref1
+        # name_list_refl = name_list_ref3
+        # name_list_refl = name_list_ref4
+
+        name_list_refl = []
+        name_list_pl = []
+
+        poni_file1 = 'LaB6_12keV_accurate.poni'
+        poni_file2 = 'LaB6_14keV_accurate.poni'
+        file_directory = r'W:balder\20221562\2022120808'
+        # file_directory = r'C:\Users\jialiu\OneDrive - Lund University\Dokument\Data_20221562_Inform'
+        refl_directory = file_directory
+        name_list_refl = name_list_opti3.copy()
+        # name_list_pl = name_list_opti3.copy()
+        add_one_refl = False
+        if name_list_refl == name_list_opti1:
+            add_one_refl = True
+
+        # might not be necessary !!!
+        # for index in range(len(name_list_refl)):
+        #     name_list_refl[index] = name_list_refl[index] + '_Refl'
+        #     name_list_pl[index] = name_list_pl[index] + '_PL'
+
+        if add_one_refl:
+            name_list_refl.append('Coat01_MAPbBrI_DMF_Refl') # correct???
+
+        name_list_xrf = []
+        xrf_directory = []
+
+        self.fill_pnd(name_list, name_list_refl, name_list_pl, name_list_xrf,
+                      poni_file1, poni_file2, file_directory,
+                      refl_directory, xrf_directory)
+    # 20221478 in Mar 2023
+    def fill_path_name_dict_2023Mar(self):
+        # xrd only, name and time
+        name_ls01 = [  # ['testqxrd_01_eiger'], # caution: must be with _eiger and nothing else!!!
+            ['FPI50_MPBr50_coat025_01_qxrd_eiger'],
+            ['FPI50_MPBr50_coat025_02_qxrd_eiger'],
+            ['FPI50_MPBr50_coat025_03_qxrd_eiger'],
+            ['MAPbBr06I04_DMSO_coat23_05_qxrd_eiger'],  # this one is always 100 ms, watch out
+            ['MAPbBr04I06_DMSO_coat24_01_qxrd_eiger'],
+            ['MAPbBr04I06_DMSO_coat24_02_qxrd_eiger'],
+            ['MAPbBr04I06_DMSO_coat24_03_qxrd_eiger']
+        ]
+
+        time_intevals = [20, 20, 20, 100, 20, 20, 20]
+
+        # one xas, two xrd
+        name_ls03 = [ # ['LaB6_ref_scan_01'],
+                     ['MFPI_coat002_01'], # 70 C, not formed
+                     ['MFPI_coat003_02'], # 90 C, formed
+                     ['MFPI_coat004_02'], # 100 C,formed
+                     ['MFPI_coat005_04'], # rt dried, not formed
+                     ['MFPI_2MACl_coat006'], # not formed
+                     ['MFPI_2MACl_coat007_1'], # 120 C
+                     ['MFPI_2MACl_coat008'], # 130 C, not fully formed
+                     ['MFPI_2MACl_coat009_01'], # 140 C
+                     ]
+
+        name_ls03 = [['MFPI_2MACl_coat10_01'],# 112 C to 140 C, not formed
+                     ['MFPI_2MACl_coat11_01'],# r.t dry part one
+                     ['MFPI_2MACl_coat11_02'], # r.t dry part two
+                     ['MFPI_1MACl_coat12'], # redundant, same as coat14
+                     ['MFPI_MACl_coat13'], # 0.25 M MACl
+                     ['MFPI_MACl_coat14'], # 0.5 M MACl
+                     ['MFPI_2ME_NMP_coat15_03'],
+                     ['MFPI_MACl_2ME_NMP_coat16_01'],
+                     ['MFPI_MACl_2ME_NMP_coat17_01'],
+                     ]
+
+        for index in range(len(name_ls03)):
+            name_ls03[index].append(name_ls03[index][0] + '_eiger')
+            name_ls03[index].append(name_ls03[index][0] + '_eiger')
+
+        # two xas, two xrd
+        name_ls04 = [['example'],
+                     ]
+
+        for index in range(len(name_ls04)):
+            name_ls04[index].append(name_ls04[index][0])
+            name_ls04[index].append(name_ls04[index][0] + '_eiger')
+            name_ls04[index].append(name_ls04[index][0] + '_eiger')
+
+        name_list_ref1 = ['MACl1M_DMF_airblade_QXRD_coat006',
+                          'MAFAPbI_DME_coat20']
+
+        name_list_ref3 = ['MFPI_coat002',
+                          'MFPI_coat003',
+                          'MFPI_coat004',
+                          'MFPI_coat005',
+                          'MFPI_2MACl_coat006',
+                          'MFPI_2MACl_coat007',
+                          'MFPI_2MACl_coat008',
+                          'MFPI_2MACl_coat009',
+                          ]
+
+        name_list_ref3 = ['MFPI_coat010',
+                          'MFPI_2MACl_coat011',
+                          'MFPI_1MACl_coat012',
+                          'MFPI_1MACl_coat013',
+                          'MFPI_MACl_coat014', # 15 may be the same
+                          'MFPI_2ME_NMP_MACl_coat016',
+                          'MFPI_2ME_NMP_MACl_coat017',
+                          ]
+
+        name_list_ref4 = ['MAPbI_DMSO_2ME_coat8',
+                          'MAPbI_DMSO_2ME_coat19']
+
+        # to change: name_list, poni_file, directory
+        # name_list = name_ls01 # one xrd
+        # name_list = name_ls02 # two xas, one xrd
+        name_list = name_ls03  # one xas, two xrd
+        # name_list = name_ls04 # two xas, two xrd
+
+        # name_list_refl = name_list_ref1
+        name_list_refl = name_list_ref3.copy()
+        # name_list_refl = name_list_ref4
+        name_list_pl = name_list_ref3.copy()
+
+        for index in range(len(name_list_refl)):
+            name_list_refl[index] = name_list_refl[index] + '_Refl'
+            name_list_pl[index] = name_list_pl[index] + '_PL'
+
+        name_list_xrf3 = ['coat10_MFPI_2MACl_DMF',
+                          'coat11_MFPI_2MACl_DMF',
+                          'coat12_MFPI_1MACl_DMF',
+                          'coat13_MFPI_MACl_DMF',
+                          'coat14_MFPI_MACl_DMF',
+                          'coat15_MFPI_2ME_NMP',
+                          'coat16_MFPI_2ME_NMP_MACl',
+                          'coat17_MFPI_2ME_NMP_MACl',
+                          ]
+
+        name_list_xrf = name_list_xrf3.copy()
+
+        poni_file1 = 'LaB6_p7keV_x2rol_adjusted.poni'
+        poni_file2 = 'LaB6_13keV_x2rol_adjusted.poni'
+        file_directory = r"W:\balder\20221478\2023030108"
+        refl_directory = file_directory # r"Y:\balder\20221478\2023030108"
+        xrf_directory = file_directory
+
+        self.fill_pnd(name_list, name_list_refl, name_list_pl, name_list_xrf,
+                      poni_file1, poni_file2, file_directory,
+                      refl_directory, xrf_directory)
 
     def choose_data_read_mode(self, action):
         for index in range(self.repeat):
@@ -546,8 +811,9 @@ class ShowData(QMainWindow):
         for key in self.methodict:
             try:
                 timerange.append(self.methodict[key].time_range(self))
-            except:
+            except Exception as e:
                 print('check your file name, or reselect your import mode, or your file is not complete or if you are unlucky')
+                print(str(e))
 
         if timerange:
             self.timerangearray = np.array(timerange) * 1000 # in milliseconds ! search for [:-3]
@@ -640,8 +906,10 @@ class ShowData(QMainWindow):
                             )
                 # del curves
                 del self.methodict[key].curve_timelist[-1]
+                print('del curve in method ' + key)
                 # del data
                 del self.methodict[key].data_timelist[-1]
+                print('del data in method ' + key)
 
 
     def graphdock(self, state):
@@ -664,9 +932,11 @@ class ShowData(QMainWindow):
                     self.methodict[checkbox.text()].index_win.deldock(self)
                 # self.slider.valueChanged.disconnect(self.methodict[checkbox.text()].update_timepoints)
                 del self.methodict[checkbox.text()] # del the method object
+                print('del method ' + checkbox.text())
                 del self.gdockdict[checkbox.text()] # del the dock object, here can do some expansion to prevent a problem mentioned in Classes
+                print('del dock ' + checkbox.text())
 
-    def graphtab(self, state):
+    def graph_tab(self, state):
         checkbox = self.sender() # e.g. raw, norm,...
         tooltabname = checkbox.parent().objectName() # e.g. xas, xrd,...
         if state == Qt.Checked:
@@ -679,9 +949,13 @@ class ShowData(QMainWindow):
             if self.gdockdict[tooltabname].tabdict[checkbox.text()]:
                 tabgraphobj = self.gdockdict[tooltabname].tabdict[checkbox.text()]
                 tabgraphobj.delcurvechecks(checkbox.text(), self.methodict[tooltabname])
+                print('del 1 ' + checkbox.text())
                 tabgraphobj.deltab(self.gdockdict[tooltabname])
+                print('del 2 ' + tooltabname)
                 tabgraphobj.delcontrolitem(self.gdockdict[tooltabname])
-                del self.gdockdict[tooltabname].tabdict[checkbox.text()]
+                print('del 3 ' + tooltabname)
+                del self.gdockdict[tooltabname].tabdict[checkbox.text()] # access violation?
+                print('del 4 ' + checkbox.text())
     
     def graphcurve(self, state):
         checkbox = self.sender() # e.g. I0, I1,...
@@ -699,6 +973,7 @@ class ShowData(QMainWindow):
                         self.methodict[tooltabname].curve_timelist[timelist][toolitemname][checkbox.text()]
                     )
                     del self.methodict[tooltabname].curve_timelist[timelist][toolitemname][checkbox.text()]
+                    print('del curve in method ' + tooltabname + ' ' + checkbox.text())
                 if checkbox.text() in self.methodict[tooltabname].data_timelist[0][toolitemname]:
                     if self.methodict[tooltabname].data_timelist[0][toolitemname][checkbox.text()].image is not None:
                         self.gdockdict[tooltabname].tabdict[toolitemname].tabplot.clear()
@@ -711,7 +986,8 @@ class ShowData(QMainWindow):
         for key in self.gdockdict:  # xas, xrd,...
             try:
                 self.methodict[key].data_update(slidervalue)
-            except:
+            except Exception as exc:
+                print(exc)
                 print('maybe you missed some process before this step?')
 
             if self.methodict[key].update == True:
@@ -810,6 +1086,7 @@ class ShowData(QMainWindow):
 if __name__ == '__main__':
     # solve the dpi issue
     # QtWidgets.QApplication.setAttribute(QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+    faulthandler.enable() #start @ the beginning
     make_dpi_aware()
     app = QApplication(sys.argv)
     w = ShowData()
