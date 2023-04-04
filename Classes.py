@@ -4633,7 +4633,7 @@ class XRF(Methods_Base):
 
     def read_data_time(self, datafile):
         if os.path.exists(os.path.join(self.directory, 'raw', 'XRF')):
-            filenames = glob.glob(os.path.join(self.directory, 'raw', 'XRF', self.fileshort))
+            filenames = sorted(glob.glob(os.path.join(self.directory, 'raw', 'XRF', self.fileshort + '*')))
 
         data = []
         datatime = []
@@ -4642,7 +4642,8 @@ class XRF(Methods_Base):
             with open(f_name, 'r', encoding='windows-1252') as f:
                 for line in f:
                     if 'START_TIME' in line:
-                        datetime.append(time.mktime(datetime.strptime(line.split(' - ')[-1]), '%m/%d/%Y %H:%M:%S').timetuple())
+                        datatime.append(time.mktime(datetime.strptime(line.split(' - ')[-1].split('\n')[0],
+                                                                      '%m/%d/%Y %H:%M:%S').timetuple()))
 
                     if '<<DATA>>' in line:
                         for line in f:
@@ -4657,7 +4658,8 @@ class XRF(Methods_Base):
                 f.create_dataset('raw', data=self.data)
 
             datatime = np.array(datatime)
-            self.entrytimesec = np.stack((datatime, datatime + datatime[1] - datatime[0]))
+            self.entrytimesec = np.stack((datatime, datatime + datatime[1] - datatime[0])).T
+
             with h5py.File(datafile, 'a') as f:
                 f.create_dataset('time in seconds', data=self.entrytimesec)
 
@@ -4665,13 +4667,13 @@ class XRF(Methods_Base):
         pass
 
     def plot_optic_2D(self, step, data_norm, pw):
-        xticklabels = []
-        for tickvalue in np.arange(self.channels[0], self.channels[-1], step):
-            xticklabels.append((int(data_norm.shape[1] * (tickvalue - self.channels[0]) /
-                                    (self.channels[-1] - self.channels[0])), "{:4.1f}".format(tickvalue)))
-
-        xticks = pw.getAxis('bottom')
-        xticks.setTicks([xticklabels])
+        # xticklabels = []
+        # for tickvalue in np.arange(self.channels[0], self.channels[-1], step):
+        #     xticklabels.append((int(data_norm.shape[1] * (tickvalue - self.channels[0]) /
+        #                             (self.channels[-1] - self.channels[0])), "{:4.1f}".format(tickvalue)))
+        #
+        # xticks = pw.getAxis('bottom')
+        # xticks.setTicks([xticklabels])
 
         for item in pw.childItems():
             if type(item).__name__ == 'ViewBox':

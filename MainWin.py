@@ -131,7 +131,7 @@ class ShowData(QMainWindow):
 
         self.gdockdict = dict() # a dic for all top-level graph dock widgets: xas, xrd,...
         self.methodict = dict() # a dic for all available methods: xas, xrd,... there should be only one type each!
-        self.data_read_dict = {'20221478_inform': {'xas':XAS_INFORM_2, 'xrd': XRD_INFORM_3, 'xrf': XRF},
+        self.data_read_dict = {'20221478_inform': {'xas':XAS_INFORM_2, 'xrd': XRD_INFORM_3},
                                '20221478_inform_xrd_only': {'xas': XAS_INFORM_2, 'xrd': XRD_INFORM_3_ONLY},
                                '20220660_inform': {'xas':XAS_INFORM_2, 'xrd': XRD_INFORM_2},
                                '20220660_inform_xrd_only': {'xas': XAS_INFORM_2, 'xrd': XRD_INFORM_2_ONLY},
@@ -684,6 +684,7 @@ class ShowData(QMainWindow):
                 if key[0:3] == 'xas': self.methodclassdict[key] = self.data_read_dict[action.text()]['xas']
                 if key[0:3] == 'ref': self.methodclassdict[key] = Refl
                 if key[0:2] == 'pl': self.methodclassdict[key] = PL
+                if key[0:3] == 'xrf': self.methodclassdict[key] = XRF
 
         if not self.initialized:
             self.ini_methods_cboxes()
