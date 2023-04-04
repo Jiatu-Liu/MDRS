@@ -4700,6 +4700,8 @@ class XRF(Methods_Base):
         if hasattr(self, 'y_range'):
             pw.setYRange(self.y_range[0], self.y_range[1])
 
+        pw.setXRange(0,len(self.channels) / 4) # since our interested region is at lower range
+
     def plot_from_load(self, winobj): # this needs pre-select a good reference
         winobj.setslider()
         pw = winobj.gdockdict[self.method_name].tabdict['time series'].tabplot
