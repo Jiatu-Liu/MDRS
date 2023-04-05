@@ -4412,8 +4412,8 @@ class PL(Optic):
         self.actions = {'time series': {'update y,z range (Ctrl+0)': self.update_range,
                                         # 'Export reference (Ctrl+X)': self.export_norm
                                         }}
-        self.linedit = {'time series': {'z min': '-2',
-                                        'z max': '0.1',
+        self.linedit = {'time series': {'z min': '0',
+                                        'z max': '10',
                                         'y min':'0',
                                         'y max':'1000',}}
 
@@ -4452,9 +4452,9 @@ class PL(Optic):
             if self.checksdict['time series'].isChecked():  # and 'reference' in self.curve_timelist[0]['raw']:
                 self.curvedict['time series']['pointer'].setChecked(True)
                 if self.checksdict['raw'].isChecked() and self.curvedict['raw']['dark'].isChecked():
-                    self.plot_optic_2D(100, np.log10(self.data - self.dark), pw)
+                    self.plot_optic_2D(100, self.data - self.dark, pw)
                 else:
-                    self.plot_optic_2D(100, np.log10(self.data), pw)
+                    self.plot_optic_2D(100, self.data, pw)
 
     def time_range(self, winobj):
         for key in winobj.path_name_widget:  # to distinguish _1, _2, ...
