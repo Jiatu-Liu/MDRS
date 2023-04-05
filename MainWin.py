@@ -225,23 +225,26 @@ class ShowData(QMainWindow):
             for index in range(len(name_list_refl)):
                 self.path_name_dict['refl_' + str(index + 1)] = {'directory': refl_directory,
                                                                  'raw file': name_list_refl[index],
-                                                                 'align data number':'3022',
-                                                                 'to time':'2022-04-23T12:02:44'
+                                                                 # 'align data number':'360',
+                                                                 # 'to time':'2023-03-05T22:44:44',
+                                                                 'time diff in sec':'140',
                                                                  }
         if name_list_pl != []:
             for index in range(len(name_list_refl)):
                 self.path_name_dict['pl_' + str(index + 1)] = {'directory': refl_directory,
                                                                  'raw file': name_list_pl[index],
-                                                                 'align data number':'3022',
-                                                                 'to time':'2022-04-23T12:02:44'
+                                                                 # 'align data number':'360',
+                                                                 # 'to time':'2023-03-05T22:44:44',
+                                                                 'time diff in sec': '140',
                                                                  }
 
         if name_list_xrf != []:
             for index in range(len(name_list_xrf)):
                 self.path_name_dict['xrf' + str(index + 1)] = {'directory': xrf_directory,
                                                                'raw file': name_list_xrf[index],
-                                                               'align data number': '3022',
-                                                               'to time': '2022-04-23T12:02:44'
+                                                               # 'align data number':'360',
+                                                               # 'to time':'2023-03-05T22:44:44',
+                                                               'time diff in sec': '140',
                                                                }
 
         # self.path_name_dict['refl_1'] = {'directory': r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",

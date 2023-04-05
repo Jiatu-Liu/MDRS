@@ -4239,9 +4239,6 @@ class Optic(Methods_Base):
         self.fileshort = path_name_widget['raw file'].text()
         self.exportdir = os.path.join(self.directory, 'process', self.fileshort + '_Optic_data')
         if not os.path.isdir(self.exportdir): os.mkdir(self.exportdir)
-        self.align_data = int(path_name_widget['align data number'].text())
-        self.to_time = time.mktime(
-            datetime.strptime(path_name_widget['to time'].text(), '%Y-%m-%dT%H:%M:%S').timetuple())  # in second
         self.aligned = False
         self.pre_ts_btn_text = 'Align data to time(Ctrl+D)'
         # if int(self.directory.split('202')[1][0]) > 1: # new spectrometer after 2021 (202 1)
@@ -4335,15 +4332,20 @@ class Optic(Methods_Base):
         return np.array(timedata)
 
     def plot_from_prep(self, winobj):
-        winobj.setslider()
-        if self.align_data: # and not self.aligned: # there is a little problem here: what if you want to align it again?
-            try:
-                time_diff = self.entrytimesec[self.align_data, 0] - self.to_time
-                self.entrytimesec = self.entrytimesec - time_diff
-                self.aligned = True
-            except Exception as e:
-                print(e)
-                print('check your input')
+        # winobj.setslider()
+        # if self.align_data: # and not self.aligned: # there is a little problem here: what if you want to align it again?
+        try:
+            # self.align_data = int(winobj.path_name_widget[self.method_name]['align data number'].text())
+            # self.to_time = time.mktime(
+            #     datetime.strptime(winobj.path_name_widget[self.method_name]['to time'].text(), '%Y-%m-%dT%H:%M:%S').timetuple())  # in second
+            # time_diff = self.entrytimesec[self.align_data, 0] - self.to_time
+            time_diff = int(winobj.path_name_widget[self.method_name]['time diff in sec'].text())
+            self.entrytimesec = self.entrytimesec - time_diff
+            self.aligned = True
+            winobj.setslider()
+        except Exception as e:
+            print(e)
+            print('check your input')
 
     def plot_optic_2D(self, step, data_norm, pw):
         xticklabels = []
@@ -4413,7 +4415,7 @@ class PL(Optic):
                                         # 'Export reference (Ctrl+X)': self.export_norm
                                         }}
         self.linedit = {'time series': {'z min': '0',
-                                        'z max': '10',
+                                        'z max': '8',
                                         'y min':'0',
                                         'y max':'1000',}}
 
@@ -4463,20 +4465,21 @@ class PL(Optic):
 
         self.exportfile = os.path.join(self.exportdir, self.fileshort + '_pl_data.h5')
         if os.path.isfile(self.exportfile):
-            with h5py.File(self.exportfile, 'r') as f:
-                self.data = np.zeros((f['raw'].shape[0], f['raw'].shape[1]), dtype='float32')
-                f['raw'].read_direct(self.data)
-                self.entrytimesec = np.zeros((f['time in seconds'].shape[0], 2), dtype='float64')
-                f['time in seconds'].read_direct(self.entrytimesec)
-                if 'y min' in list(f.keys()):
-                    self.y_range = [f['y min'][()], f['y max'][()]]
+            if self.entrytimesec == []:
+                with h5py.File(self.exportfile, 'r') as f:
+                    self.data = np.zeros((f['raw'].shape[0], f['raw'].shape[1]), dtype='float32')
+                    f['raw'].read_direct(self.data)
+                    self.entrytimesec = np.zeros((f['time in seconds'].shape[0], 2), dtype='float64')
+                    f['time in seconds'].read_direct(self.entrytimesec)
+                    if 'y min' in list(f.keys()):
+                        self.y_range = [f['y min'][()], f['y max'][()]]
 
-                for key in list(f.keys()):
-                    if key == 'pl_dark':
-                        self.checksdict['raw'].setChecked(True)
-                        self.curvedict['raw']['dark'].setChecked(True)
-                        self.dark = np.zeros(f['pl_dark'].shape[0], dtype='float64')
-                        f['pl_dark'].read_direct(self.dark)
+                    for key in list(f.keys()):
+                        if key == 'pl_dark':
+                            self.checksdict['raw'].setChecked(True)
+                            self.curvedict['raw']['dark'].setChecked(True)
+                            self.dark = np.zeros(f['pl_dark'].shape[0], dtype='float64')
+                            f['pl_dark'].read_direct(self.dark)
 
         else:
             self.read_data_time(self.exportfile)
@@ -4518,8 +4521,8 @@ class Refl(Optic):
         # unique to Refl
         self.refcandidate = []
         # self.parameters = {'time series': {'normalize': Paraclass('original', ['original', 'normalized'])}}
-        self.linedit = {'time series':{'z min':'-2',
-                                       'z max':'0.1',
+        self.linedit = {'time series':{'z min':'0',
+                                       'z max':'2',
                                        'y min':'0',
                                        'y max':'1000'},
                         'raw':{'load reference from':''}} # ,
@@ -4593,21 +4596,22 @@ class Refl(Optic):
 
         self.exportfile = os.path.join(self.exportdir, self.fileshort + '_refl_data.h5')
         if os.path.isfile(self.exportfile):
-            with h5py.File(self.exportfile, 'r') as f:
-                self.data = np.zeros((f['raw'].shape[0], f['raw'].shape[1]), dtype='float32')
-                f['raw'].read_direct(self.data)
-                self.entrytimesec = np.zeros((f['time in seconds'].shape[0], f['time in seconds'].shape[1]), dtype='float64')
-                # how important is this dtype!!! as the abs time in seconds is a large number, you need to choose 64!!! so critical!!!
-                f['time in seconds'].read_direct(self.entrytimesec)
-                if 'y min' in list(f.keys()):
-                    self.y_range = [f['y min'][()], f['y max'][()]]
+            if self.entrytimesec == []:
+                with h5py.File(self.exportfile, 'r') as f:
+                    self.data = np.zeros((f['raw'].shape[0], f['raw'].shape[1]), dtype='float32')
+                    f['raw'].read_direct(self.data)
+                    self.entrytimesec = np.zeros((f['time in seconds'].shape[0], f['time in seconds'].shape[1]), dtype='float64')
+                    # how important is this dtype!!! as the abs time in seconds is a large number, you need to choose 64!!! so critical!!!
+                    f['time in seconds'].read_direct(self.entrytimesec)
+                    if 'y min' in list(f.keys()):
+                        self.y_range = [f['y min'][()], f['y max'][()]]
 
-                for key in list(f.keys()):
-                    if key == 'refl_ref':
-                        self.checksdict['raw'].setChecked(True)
-                        self.curvedict['raw']['reference'].setChecked(True)
-                        self.refcandidate = np.zeros(f['refl_ref'].shape[0], dtype='float64')
-                        f['refl_ref'].read_direct(self.refcandidate)
+                    for key in list(f.keys()):
+                        if key == 'refl_ref':
+                            self.checksdict['raw'].setChecked(True)
+                            self.curvedict['raw']['reference'].setChecked(True)
+                            self.refcandidate = np.zeros(f['refl_ref'].shape[0], dtype='float64')
+                            f['refl_ref'].read_direct(self.refcandidate)
 
         else:
             self.read_data_time(self.exportfile)
@@ -4697,11 +4701,14 @@ class XRF(Methods_Base):
                 f.create_dataset('time in seconds', data=self.entrytimesec)
 
     def plot_from_prep(self, winobj):
-        winobj.setslider()
-        if self.align_data:  # and not self.aligned: # there is a little problem here: what if you want to align it again?
-            time_diff = self.entrytimesec[self.align_data, 0] - self.to_time
+        try:
+            time_diff = int(winobj.path_name_widget[self.method_name]['time diff in sec'].text())
             self.entrytimesec = self.entrytimesec - time_diff
             self.aligned = True
+            winobj.setslider()
+        except Exception as e:
+            print(e)
+            print('check your input')
 
     def plot_optic_2D(self, step, data_norm, pw):
         # xticklabels = []
@@ -4768,14 +4775,15 @@ class XRF(Methods_Base):
 
         self.exportfile = os.path.join(self.exportdir, self.fileshort + '_xrf_data.h5')
         if os.path.isfile(self.exportfile):
-            with h5py.File(self.exportfile, 'r') as f:
-                self.data = np.zeros((f['raw'].shape[0], f['raw'].shape[1]), dtype='float32')
-                f['raw'].read_direct(self.data)
-                self.entrytimesec = np.zeros((f['time in seconds'].shape[0], f['time in seconds'].shape[1]), dtype='float64')
-                # how important is this dtype!!! as the abs time in seconds is a large number, you need to choose 64!!! so critical!!!
-                f['time in seconds'].read_direct(self.entrytimesec)
-                if 'y min' in list(f.keys()):
-                    self.y_range = [f['y min'][()], f['y max'][()]]
+            if self.entrytimesec == []:
+                with h5py.File(self.exportfile, 'r') as f:
+                    self.data = np.zeros((f['raw'].shape[0], f['raw'].shape[1]), dtype='float32')
+                    f['raw'].read_direct(self.data)
+                    self.entrytimesec = np.zeros((f['time in seconds'].shape[0], f['time in seconds'].shape[1]), dtype='float64')
+                    # how important is this dtype!!! as the abs time in seconds is a large number, you need to choose 64!!! so critical!!!
+                    f['time in seconds'].read_direct(self.entrytimesec)
+                    if 'y min' in list(f.keys()):
+                        self.y_range = [f['y min'][()], f['y max'][()]]
 
         else:
             self.read_data_time(self.exportfile)
