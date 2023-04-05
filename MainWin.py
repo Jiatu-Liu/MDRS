@@ -118,7 +118,7 @@ class ShowData(QMainWindow):
         pg.setConfigOption('leftButtonPan', False)
 
         self.cboxes = QToolBox()
-        self.cboxes.setMinimumHeight(int(screen_height * 1.5)) # hope this can make it a bit more spacious
+        self.cboxes.setMinimumHeight(int(screen_height * 2)) # hope this can make it a bit more spacious
         self.scroll_area = QScrollArea() #
         self.scroll_area.setWidget(self.cboxes) #
         self.scroll_area.setWidgetResizable(True) # this line is the key, OMG!!!
@@ -225,23 +225,23 @@ class ShowData(QMainWindow):
             for index in range(len(name_list_refl)):
                 self.path_name_dict['refl_' + str(index + 1)] = {'directory': refl_directory,
                                                                  'raw file': name_list_refl[index],
-                                                                 # 'align data number':'3022',
-                                                                 # 'to time':'2022-04-23T12:02:44'
+                                                                 'align data number':'3022',
+                                                                 'to time':'2022-04-23T12:02:44'
                                                                  }
         if name_list_pl != []:
             for index in range(len(name_list_refl)):
                 self.path_name_dict['pl_' + str(index + 1)] = {'directory': refl_directory,
                                                                  'raw file': name_list_pl[index],
-                                                                 # 'align data number':'3022',
-                                                                 # 'to time':'2022-04-23T12:02:44'
+                                                                 'align data number':'3022',
+                                                                 'to time':'2022-04-23T12:02:44'
                                                                  }
 
         if name_list_xrf != []:
             for index in range(len(name_list_xrf)):
                 self.path_name_dict['xrf' + str(index + 1)] = {'directory': xrf_directory,
                                                                'raw file': name_list_xrf[index],
-                                                               # 'align data number': '3022',
-                                                               # 'to time': '2022-04-23T12:02:44'
+                                                               'align data number': '3022',
+                                                               'to time': '2022-04-23T12:02:44'
                                                                }
 
         # self.path_name_dict['refl_1'] = {'directory': r"C:\Users\jialiu\OneDrive - Lund University\Skrivbordet\OpticData",
@@ -569,7 +569,7 @@ class ShowData(QMainWindow):
         # xrd only, name and time
         name_ls01 = [  # ['testqxrd_01_eiger'], # caution: must be with _eiger and nothing else!!!
             ['MAPbBr_DMSO_coat18_qxrd_eiger'],
-            ['MAPbBr_DMSO_coat19_qxrd_aboveEdge_eiger'],
+            ['MAPbBr_DMSO_coat19_qxrd_aboveEdge_eiger'], # ?
             ['MAPbBr_DMSO_coat20_01_qxrd_eiger'],
             ['MAPbBr_DMSO_coat20_02_qxrd_eiger'],
             ['MAPbBr_DMSO_coat20_03_qxrd_eiger'],
@@ -585,8 +585,7 @@ class ShowData(QMainWindow):
             ['MAPbBr05I05_DMSO_coat21_04_qxrd_eiger'],
             ['MAPbBr05I05_DMSO_coat21_05_qxrd_eiger'],
             ['MAPbBr05I05_DMSO_coat21_06_qxrd_eiger'],
-            ['MAPbI_DMSO_coat22_01_qxrd_1_eiger'], # ?
-            ['MAPbI_DMSO_coat22_01_qxrd_eiger'],
+            ['MAPbI_DMSO_coat22_01_qxrd_1_eiger'],
             ['MAPbI_DMSO_coat22_02_qxrd_eiger'],
             ['MAPbI_DMSO_coat22_03_qxrd_eiger'],
             ['MAPbI_DMSO_coat22_04_qxrd_eiger'],
@@ -596,7 +595,7 @@ class ShowData(QMainWindow):
             ['MAPbBr06I04_DMSO_coat23_02_qxrd_eiger'],
             ['MAPbBr06I04_DMSO_coat23_03_qxrd_eiger'],
             ['MAPbBr06I04_DMSO_coat23_04_qxrd_eiger'],
-            ['MAPbBr06I04_DMSO_coat23_05_qxrd_eiger'],  # this one is always 100 ms, watch out
+            ['MAPbBr06I04_DMSO_coat23_05_qxrd_eiger'],  # this one is 100 ms, watch out, and has two timestamp, beam damage!
             ['MAPbBr04I06_DMSO_coat24_01_qxrd_eiger'],
             ['MAPbBr04I06_DMSO_coat24_02_qxrd_eiger'],
             ['MAPbBr04I06_DMSO_coat24_03_qxrd_eiger'],
@@ -610,6 +609,8 @@ class ShowData(QMainWindow):
             ['FPI60_MPBr40_coat027_02_qxrd_eiger'],
             ['FPI60_MPBr40_coat027_03_qxrd_eiger'],
         ]
+
+        # there is also a single xas measurement for each coat above.
 
         time_intevals = [20] * len(name_ls01)
         time_intevals[28] = 100
@@ -658,7 +659,7 @@ class ShowData(QMainWindow):
                           'MPBr04I06_DMSO_coat24',
                           'FPI50_MPBr50_coat25',
                           'FPI80_MPBr20_coat26',
-                          'FPI40_MPBr60_coat26',
+                          'FPI40_MPBr60_coat26', # ?
                           'FPI60_MPBr40_coat27',
                           ]
 
@@ -680,23 +681,6 @@ class ShowData(QMainWindow):
                           ]
 
         name_list_ref4 = ['example',]
-
-        # to change: name_list, poni_file, directory
-        name_list = name_ls01 # one xrd
-        # name_list = name_ls02 # two xas, one xrd
-        # name_list = name_ls03  # one xas, two xrd
-        # name_list = name_ls04 # two xas, two xrd
-
-        name_list_refl = name_list_ref1.copy()
-        # name_list_refl = name_list_ref3.copy()
-        # name_list_refl = name_list_ref4.copy()
-        name_list_pl = name_list_ref1.copy()
-        # name_list_pl = name_list_ref3.copy()
-        # name_list_pl = name_list_ref4.copy()
-
-        for index in range(len(name_list_refl)):
-            name_list_refl[index] = name_list_refl[index] + '_Refl'
-            name_list_pl[index] = name_list_pl[index] + '_PL'
 
         name_list_xrf1 = ['coat18_MPBr_DMSO',
                           'coat19_MPBr_DMSO', # merged with 20
@@ -726,13 +710,34 @@ class ShowData(QMainWindow):
                           'coat17_MFPI_2ME_NMP_MACl',
                           ]
 
-        name_list_xrf = name_list_xrf3.copy()
+        # to change: name_list, poni_file, directory
+        name_list = name_ls01 # one xrd
+        # name_list = name_ls02 # two xas, one xrd
+        # name_list = name_ls03  # one xas, two xrd
+        # name_list = name_ls04 # two xas, two xrd
+
+        name_list_refl = name_list_ref1.copy()
+        # name_list_refl = name_list_ref3.copy()
+        # name_list_refl = name_list_ref4.copy()
+        name_list_pl = name_list_ref1.copy()
+        # name_list_pl = name_list_ref3.copy()
+        # name_list_pl = name_list_ref4.copy()
+
+        for index in range(len(name_list_refl)):
+            name_list_refl[index] = name_list_refl[index] + '_Refl'
+            name_list_pl[index] = name_list_pl[index] + '_PL'
+
+        name_list_xrf = name_list_xrf1.copy()
+        # name_list_xrf = name_list_xrf3.copy()
 
         poni_file1 = 'LaB6_p7keV_x2rol_adjusted.poni'
         poni_file2 = 'LaB6_13keV_x2rol_adjusted.poni'
         file_directory = r"W:\balder\20221478\2023030108"
         refl_directory = file_directory # r"Y:\balder\20221478\2023030108"
         xrf_directory = file_directory
+
+        if name_list == name_ls01:
+            poni_file1 = poni_file2
 
         self.fill_pnd(name_list, name_list_refl, name_list_pl, name_list_xrf,
                       poni_file1, poni_file2, time_intevals, file_directory,

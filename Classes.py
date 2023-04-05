@@ -1262,8 +1262,8 @@ class XAS(Methods_Base):
         pw.addItem(img_ts)
         color_map = pg.colormap.get('CET-R4')
         color_bar_ts = pg.ColorBarItem(values=(float(self.linewidgets[mode]['z min'].text()),
-                                                    float(self.linewidgets[mode]['z max'].text())), cmap=color_map)
-        # color_bar_ts = pg.ColorBarItem(values=(rspace_array.max() * .9, rspace_array.max()), cmap=color_map)
+                                                    float(self.linewidgets[mode]['z max'].text())), colorMap=color_map)
+        # color_bar_ts = pg.ColorBarItem(values=(rspace_array.max() * .9, rspace_array.max()), colorMap=color_map)
         color_bar_ts.setImageItem(img_ts, pw)
         if hasattr(self, 'y_range'):
             pw.setYRange(self.y_range[0], self.y_range[1])
@@ -3263,9 +3263,9 @@ class XRD(Methods_Base):
                 intdata_ts[isnan(intdata_ts)] = 0 # surprise!
                 intdata_ts[np.isinf(intdata_ts)] = 0
                 # this one has grains on plot
-                # self.color_bar_ts = pg.ColorBarItem(values=(intdata_ts.min(), intdata_ts.max()), cmap=color_map)
+                # self.color_bar_ts = pg.ColorBarItem(values=(intdata_ts.min(), intdata_ts.max()), colorMap=color_map)
                 # this one is more lovely
-                self.color_bar_ts = pg.ColorBarItem(values=(0, intdata_ts.max()), cmap=color_map)
+                self.color_bar_ts = pg.ColorBarItem(values=(0, intdata_ts.max()), colorMap=color_map)
                 self.color_bar_ts.setImageItem(self.img_ts, pw)
                 if hasattr(self, 'y_range'):
                     pw.setYRange(self.y_range[0], self.y_range[1])
@@ -4239,7 +4239,11 @@ class Optic(Methods_Base):
         self.fileshort = path_name_widget['raw file'].text()
         self.exportdir = os.path.join(self.directory, 'process', self.fileshort + '_Optic_data')
         if not os.path.isdir(self.exportdir): os.mkdir(self.exportdir)
-
+        self.align_data = int(path_name_widget['align data number'].text())
+        self.to_time = time.mktime(
+            datetime.strptime(path_name_widget['to time'].text(), '%Y-%m-%dT%H:%M:%S').timetuple())  # in second
+        self.aligned = False
+        self.pre_ts_btn_text = 'Align data to time(Ctrl+D)'
         # if int(self.directory.split('202')[1][0]) > 1: # new spectrometer after 2021 (202 1)
         self.channelnum = 2068
         ch = np.arange(0, self.channelnum, dtype='float')
@@ -4266,7 +4270,7 @@ class Optic(Methods_Base):
             else:
                 filename = os.path.join(self.directory, 'raw', 'PL_Reflection', self.fileshort + '.qvd')
                 timename = os.path.join(self.directory, 'raw', 'PL_Reflection', self.fileshort + '.qvt')
-                timefile = os.path.join(self.directory, 'raw', 'PL_Reflection', self.fileshort.split('_')[:-1] + '_info.txt')
+                timefile = os.path.join(self.directory, 'raw', 'PL_Reflection', str(self.fileshort.split('_')[:-1]) + '_info.txt')
 
         else: # needs tailored for each experiment!!!
             filename = os.path.join(self.directory, 'raw', self.fileshort + '.qvd')
@@ -4297,7 +4301,7 @@ class Optic(Methods_Base):
 
                 self.entrytimesec = np.array(self.entrytimesec)  # , dtype=int)
                 with h5py.File(datafile, 'a') as f:
-                    f.create_dataset('time in seconds', data=self.entrytimesec)
+                    f.create_dataset('time in seconds', data=self.entrytimesec, dtype='float64')
                     # here it will automatically choose a dtype which is float64!!! so critical!!!
         else:
             print('double check with your file name!')
@@ -4331,18 +4335,22 @@ class Optic(Methods_Base):
         return np.array(timedata)
 
     def plot_from_prep(self, winobj):
-        pass
-        # winobj.setslider()
-        # if self.align_data and not self.aligned: # there is a little problem here: what if you want to align it again?
-        #     time_diff = self.entrytimesec[self.align_data, 0] - self.to_time
-        #     self.entrytimesec = self.entrytimesec - time_diff
-        #     self.aligned = True
+        winobj.setslider()
+        if self.align_data: # and not self.aligned: # there is a little problem here: what if you want to align it again?
+            try:
+                time_diff = self.entrytimesec[self.align_data, 0] - self.to_time
+                self.entrytimesec = self.entrytimesec - time_diff
+                self.aligned = True
+            except Exception as e:
+                print(e)
+                print('check your input')
 
     def plot_optic_2D(self, step, data_norm, pw):
         xticklabels = []
         for tickvalue in np.arange(self.channels[0], self.channels[-1],step):
-            xticklabels.append((int(data_norm.shape[1] * (tickvalue - self.channels[0]) /
-                                    (self.channels[-1] - self.channels[0])), "{:4.1f}".format(tickvalue)))
+            tickpos = np.where(self.channels - tickvalue >= 0)[0][0]
+            if tickpos:
+                xticklabels.append((tickpos, "{:4.1f}".format(tickvalue)))
 
         xticks = pw.getAxis('bottom')
         xticks.setTicks([xticklabels])
@@ -4373,7 +4381,7 @@ class Optic(Methods_Base):
         # data_norm = ma.array(data_norm, mask=np.isinf(data_norm))
         # mode = 'time series'
         # self.color_bar_ts = pg.ColorBarItem(values=(float(self.linedit[mode]['z min']),
-        #                                             float(self.linedit[mode]['z max'])), cmap=color_map)
+        #                                             float(self.linedit[mode]['z max'])), colorMap=color_map)
         data_norm[isnan(data_norm)] = 0
         inf_ele = np.where(np.isfinite(data_norm) == False)
         for k in range(len(inf_ele[0])):
@@ -4382,7 +4390,7 @@ class Optic(Methods_Base):
         # limit the range to xas/xrd for more colorful
         view_range = np.s_[max(0,int(pw.viewRange()[1][0])):
                            min(data_norm.shape[0] - 1, int(pw.viewRange()[1][1])),:]
-        self.color_bar_ts = pg.ColorBarItem(values=(data_norm[view_range].min(), data_norm[view_range].max()),cmap=color_map)
+        self.color_bar_ts = pg.ColorBarItem(values=(data_norm[view_range].min(), data_norm[view_range].max()),colorMap=color_map)
         self.color_bar_ts.setImageItem(img_ts, pw)
         if hasattr(self, 'y_range'):
             pw.setYRange(self.y_range[0], self.y_range[1])
@@ -4391,9 +4399,10 @@ class PL(Optic):
     def __init__(self, path_name_widget):
         super(PL, self).__init__(path_name_widget)
         self.availablemethods = ['raw', 'time series', 'fit-T']
-        self.availablecurves['raw'] = ['show','fit']
+        self.availablecurves['raw'] = ['show','fit','dark']
         self.availablecurves['time series'] = ['pointer']
         self.availablecurves['fit-T'] = ['Height', 'FWHM']
+        self.dark = []
         self.axislabel = {'raw':{'bottom':'wavelength/nm',
                                  'left':'log10(intensity)'},
                           'time series': {'bottom': 'wavelength/nm',
@@ -4407,37 +4416,45 @@ class PL(Optic):
                                         'z max': '0.1',
                                         'y min':'0',
                                         'y max':'1000',}}
-                                        # 'filter criterion': '2'}}  # larger than 2 after referenced.
 
         self.ini_data_curve_color()  # this has to be at the end line of each method after a series of other attributes
 
     def export_norm(self, winobj):
-        # must guarantee reference is clicked...
         with h5py.File(os.path.join(self.exportdir, self.fileshort + '_pl_data.h5'), 'a') as f:
-            if self.aligned:
-                del f['time in seconds']
-                f.create_dataset('time in seconds', data=self.entrytimesec, dtype='float32')
+            if len(self.dark) > 0:
+                if 'pl_dark' in list(f.keys()): del f['pl_dark']
+                f.create_dataset('pl_dark', data=np.array(self.dark), dtype='float32')
+
+            if hasattr(self, 'aligned'):
+                if self.aligned:
+                    del f['time in seconds']
+                    f.create_dataset('time in seconds', self.entrytimesec)
 
     def plot_from_load(self, winobj):
         winobj.setslider()
         self.curvedict['time series']['pointer'].setChecked(True)
         pw = winobj.gdockdict[self.method_name].tabdict['time series'].tabplot
-        for key in winobj.methodict:  # for xas-xrd-pl correlation
-            if key[0:3] in ['xas', 'xrd'] and hasattr(winobj.methodict[key], 'entrytimesec'):
-                try:
-                    y_low = np.where(self.entrytimesec[:, 0] > winobj.methodict[key].entrytimesec[0, 0])[0][0]
-                except:
-                    y_low = 0
-                try:
-                    y_up = np.where(self.entrytimesec[:, 1] > winobj.methodict[key].entrytimesec[-1, -1])[0][0]
-                except:
-                    y_up = self.entrytimesec.shape[0] - 1
+        if hasattr(self, 'entrytimesec'):
+            for key in winobj.methodict:  # for xas-xrd-pl correlation
+                if key[0:3] in ['xas', 'xrd'] and hasattr(winobj.methodict[key], 'entrytimesec'):
+                    try:
+                        y_low = np.where(self.entrytimesec[:, 0] > winobj.methodict[key].entrytimesec[0, 0])[0][0]
+                    except:
+                        y_low = 0
+                    try:
+                        y_up = np.where(self.entrytimesec[:, 1] > winobj.methodict[key].entrytimesec[-1, -1])[0][0]
+                    except:
+                        y_up = self.entrytimesec.shape[0] - 1
 
-                pw.setYRange(y_low, y_up)
-                continue
+                    pw.setYRange(y_low, y_up)
+                    continue
 
-        if self.checksdict['time series'].isChecked():
-            self.plot_optic_2D(100, np.log10(self.data), pw)
+            if self.checksdict['time series'].isChecked():  # and 'reference' in self.curve_timelist[0]['raw']:
+                self.curvedict['time series']['pointer'].setChecked(True)
+                if self.checksdict['raw'].isChecked() and self.curvedict['raw']['dark'].isChecked():
+                    self.plot_optic_2D(100, np.log10(self.data - self.dark), pw)
+                else:
+                    self.plot_optic_2D(100, np.log10(self.data), pw)
 
     def time_range(self, winobj):
         for key in winobj.path_name_widget:  # to distinguish _1, _2, ...
@@ -4449,10 +4466,17 @@ class PL(Optic):
             with h5py.File(self.exportfile, 'r') as f:
                 self.data = np.zeros((f['raw'].shape[0], f['raw'].shape[1]), dtype='float32')
                 f['raw'].read_direct(self.data)
-                self.entrytimesec = np.zeros((f['time in seconds'].shape[0], 2), dtype='float32')
+                self.entrytimesec = np.zeros((f['time in seconds'].shape[0], 2), dtype='float64')
                 f['time in seconds'].read_direct(self.entrytimesec)
                 if 'y min' in list(f.keys()):
                     self.y_range = [f['y min'][()], f['y max'][()]]
+
+                for key in list(f.keys()):
+                    if key == 'pl_dark':
+                        self.checksdict['raw'].setChecked(True)
+                        self.curvedict['raw']['dark'].setChecked(True)
+                        self.dark = np.zeros(f['pl_dark'].shape[0], dtype='float64')
+                        f['pl_dark'].read_direct(self.dark)
 
         else:
             self.read_data_time(self.exportfile)
@@ -4463,8 +4487,13 @@ class PL(Optic):
         self.dynamictitle = self.fileshort + '\n data' + str(self.index + 1) + '\t start:' + self.startime + '\t end:' + self.endtime
         # raw
         if 'show' in self.curve_timelist[0]['raw']:
-            self.data_timelist[0]['raw']['show'].data = \
-                np.transpose([self.channels, np.log10(self.data[self.index,:])]) # 200 nm - 1.1 um
+            if 'dark' in self.curve_timelist[0]['raw'] and len(self.dark) > 0:
+                self.data_timelist[0]['raw']['show'].data = \
+                    np.transpose([self.channels, self.data[self.index, :] - self.dark])  # 200 nm - 1.1 um
+            else:
+                self.data_timelist[0]['raw']['show'].data = \
+                    np.transpose([self.channels, self.data[self.index, :]])  # 200 nm - 1.1 um
+                self.dark = self.data[self.index, :]
 
         # time series
         if 'pointer' in self.curve_timelist[0]['time series']:
@@ -4484,9 +4513,6 @@ class Refl(Optic):
                           'fit-T': {'bottom': 'Data number',
                                      'left': ''}}
 
-        # self.align_data = int(path_name_widget['align data number'].text())
-        # self.to_time = time.mktime(datetime.strptime(path_name_widget['to time'].text(), '%Y-%m-%dT%H:%M:%S').timetuple()) # in second
-        # self.aligned = False
         self.ini_data_curve_color()  # this has to be at the end line of each method after a series of other attributes
 
         # unique to Refl
@@ -4556,9 +4582,9 @@ class Refl(Optic):
             if self.checksdict['time series'].isChecked(): # and 'reference' in self.curve_timelist[0]['raw']:
                 self.curvedict['time series']['pointer'].setChecked(True)
                 if self.checksdict['raw'].isChecked() and self.curvedict['raw']['reference'].isChecked():
-                    self.plot_optic_2D(100, np.log10(self.data / self.refcandidate), pw)
+                    self.plot_optic_2D(100, self.data / self.refcandidate, pw)
                 else:
-                    self.plot_optic_2D(100, np.log10(self.data), pw) # / self.refcandidate
+                    self.plot_optic_2D(100, self.data, pw) # / self.refcandidate
 
     def time_range(self, winobj):
         for key in winobj.path_name_widget:  # to distinguish _1, _2, ...
@@ -4632,6 +4658,10 @@ class XRF(Methods_Base):
                                         'y min': '0',
                                         'y max': '1000', }}
 
+        self.align_data = int(path_name_widget['align data number'].text())
+        self.to_time = time.mktime(
+            datetime.strptime(path_name_widget['to time'].text(), '%Y-%m-%dT%H:%M:%S').timetuple())  # in second
+        self.aligned = False
         self.ini_data_curve_color()  # this has to be at the end line of each method after a series of other attributes
 
     def read_data_time(self, datafile):
@@ -4667,7 +4697,11 @@ class XRF(Methods_Base):
                 f.create_dataset('time in seconds', data=self.entrytimesec)
 
     def plot_from_prep(self, winobj):
-        pass
+        winobj.setslider()
+        if self.align_data:  # and not self.aligned: # there is a little problem here: what if you want to align it again?
+            time_diff = self.entrytimesec[self.align_data, 0] - self.to_time
+            self.entrytimesec = self.entrytimesec - time_diff
+            self.aligned = True
 
     def plot_optic_2D(self, step, data_norm, pw):
         # xticklabels = []
@@ -4698,7 +4732,7 @@ class XRF(Methods_Base):
         view_range = np.s_[max(0, int(pw.viewRange()[1][0])):
                            min(data_norm.shape[0] - 1, int(pw.viewRange()[1][1])), :]
         self.color_bar_ts = pg.ColorBarItem(
-            values=(data_norm[view_range].min(), data_norm[view_range].max()), cmap=color_map)
+            values=(data_norm[view_range].min(), data_norm[view_range].max()), colorMap=color_map)
         self.color_bar_ts.setImageItem(img_ts, pw)
         if hasattr(self, 'y_range'):
             pw.setYRange(self.y_range[0], self.y_range[1])
