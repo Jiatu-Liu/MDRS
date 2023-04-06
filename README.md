@@ -14,6 +14,7 @@ notes:
   attention:
   do not install gsas2 in your python environment, instead using your default user path
   change the line "gsas_path = os.path.join(os.path.expanduser('~'), 'gsas2full', 'GSASII')" in Classes.py according to your gsas path if it doesn't work.
+  ensure that the numpy is feasible version wrt other packages, i.e. no warnings accepted. otherwise there will be problem.
 
 2, you will also need pyqtgraph, paramiko, install azint by conda install -c maxiv azint (this step is not necessary if you do not integrate locally)
 
