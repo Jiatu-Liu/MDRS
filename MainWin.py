@@ -84,13 +84,13 @@ class ShowData(QMainWindow):
         super(ShowData, self).__init__()
 
         myscreen = app.primaryScreen()
-        screen_height = myscreen.geometry().height()
+        self.screen_height = myscreen.geometry().height()
         self.screen_width = myscreen.geometry().width()
-        self.setGeometry(0, int(screen_height * .1), int(self.screen_width),
-                         int(screen_height * .85))
+        self.setGeometry(0, int(self.screen_height * .1), int(self.screen_width),
+                         int(self.screen_height * .85))
 
         cframe = QFrame()
-        cframe.setMaximumHeight(int(screen_height * .05))
+        cframe.setMaximumHeight(int(self.screen_height * .05))
 
         self.horilayout = QHBoxLayout()
         self.sliderset = QPushButton("Set slider(Ctrl+>)")
@@ -118,7 +118,7 @@ class ShowData(QMainWindow):
         pg.setConfigOption('leftButtonPan', False)
 
         self.cboxes = QToolBox()
-        self.cboxes.setMinimumHeight(int(screen_height * 2)) # hope this can make it a bit more spacious
+        self.cboxes.setMinimumHeight(int(self.screen_height * 2)) # hope this can make it a bit more spacious
         self.scroll_area = QScrollArea() #
         self.scroll_area.setWidget(self.cboxes) #
         self.scroll_area.setWidgetResizable(True) # this line is the key, OMG!!!
@@ -137,7 +137,9 @@ class ShowData(QMainWindow):
                                '20220660_inform_xrd_only': {'xas': XAS_INFORM_2, 'xrd': XRD_INFORM_2_ONLY},
                                '20220720_inform': {'xas': XAS_INFORM_1, 'xrd': XRD_INFORM_1},
                                '20220720_inform_xrd_only': {'xas': XAS_INFORM_1, 'xrd': XRD_INFORM_1_ONLY},
-                               '20210738_battery': {'xas': XAS_BATTERY_1, 'xrd': XRD_BATTERY_1}}
+                               '20210738_battery': {'xas': XAS_BATTERY_1, 'xrd': XRD_BATTERY_1},
+                               'general': {'xas': XAS_general, 'xrd': XRD_general}
+                               }
 
         data_read = QMenu('Data Read Mode', self)
         read_mode_group = QActionGroup(data_read)
@@ -167,8 +169,9 @@ class ShowData(QMainWindow):
         self.subcboxverti = {}
         self.path_name_dict = {}
 
-        self.fill_path_name_dict_2023Mar()
-        # self.fill_path_name_dict_2022Dec()
+        # self.fill_path_name_dict_general()
+        # self.fill_path_name_dict_2023Mar()
+        self.fill_path_name_dict_2022Dec() # 20221526
         # self.fill_path_name_dict_2022Oct() # 20220660
         # self.fill_path_name_dict_2022April()
 
@@ -424,9 +427,9 @@ class ShowData(QMainWindow):
                           'MAPbI_DMSO_2ME_coat19']
 
         # to change: name_list, poni_file, directory
-        # name_list = name_ls01 # one xrd
+        name_list = name_ls01 # one xrd
         # name_list = name_ls02 # two xas, one xrd
-        name_list = name_ls03  # one xas, two xrd
+        # name_list = name_ls03  # one xas, two xrd
         # name_list = name_ls04 # two xas, two xrd
 
         # name_list_refl = name_list_ref1
@@ -484,14 +487,10 @@ class ShowData(QMainWindow):
                      ['MAPbBrI_2ME_DMF_coat006a'],
                      ['MAPbBrI_2ME_DMF_coat007a'],
                      ['MAPbBrI_2ME_DMF_coat008'],
-                     ]
-
-        name_ls04_1 = [['Br_I_2syringe_coat017c_XAS-XRD'],
-                       ['Br_I_2syringe_coat018c'],
-                       ['Br_I_2syringe_coat020'],
-                       ]
-
-        name_ls04_2 = [['MAPbBrI_DMSO_coat010b'],
+                     ['Br_I_2syringe_coat017c_XAS-XRD'],
+                     ['Br_I_2syringe_coat018c'],
+                     ['Br_I_2syringe_coat020'],
+                     ['MAPbBrI_DMSO_coat010b'],
                      ['MAPbBrI_DMSO_coat010b_annealed_BeamDamage'],
                      ['MAPbBrI_DMSO_coat011_03'],
                      ['MAPbBrI_DMSO_coat012'],
@@ -532,8 +531,8 @@ class ShowData(QMainWindow):
         # to change: name_list, poni_file, directory
         # name_list = name_ls01 # one xrd
         # name_list = name_ls02 # two xas, one xrd
-        name_list = name_ls03  # one xas, two xrd
-        # name_list = name_ls04 # two xas, two xrd
+        # name_list = name_ls03  # one xas, two xrd
+        name_list = name_ls04 # two xas, two xrd
 
         # name_list_refl = name_list_ref1
         # name_list_refl = name_list_ref3
@@ -605,9 +604,9 @@ class ShowData(QMainWindow):
             ['FPI50_MPBr50_coat025_01_qxrd_eiger'],
             ['FPI50_MPBr50_coat025_02_qxrd_eiger'],
             ['FPI50_MPBr50_coat025_03_qxrd_eiger'],
-            ['FPI40_MPBr60_coat026_01_xas_eiger'],
-            ['FPI40_MPBr60_coat026_02_xas_eiger'],
-            ['FPI40_MPBr60_coat026_03_xas_eiger'],
+            ['FPI40_MPBr60_coat026_01_qxrd_eiger'],
+            ['FPI40_MPBr60_coat026_02_qxrd_eiger'],
+            ['FPI40_MPBr60_coat026_03_qxrd_eiger'],
             ['FPI60_MPBr40_coat027_01_qxrd_eiger'],
             ['FPI60_MPBr40_coat027_02_qxrd_eiger'],
             ['FPI60_MPBr40_coat027_03_qxrd_eiger'],
@@ -714,28 +713,28 @@ class ShowData(QMainWindow):
                           ]
 
         # to change: name_list, poni_file, directory
-        name_list = name_ls01 # one xrd
-        # name_list = name_ls02 # two xas, one xrd
-        # name_list = name_ls03  # one xas, two xrd
-        # name_list = name_ls04 # two xas, two xrd
+        # name_list = name_ls01 # one xrd
+        name_list = name_ls03  # one xas, two xrd
 
-        name_list_refl = name_list_ref1.copy()
-        # name_list_refl = name_list_ref3.copy()
-        # name_list_refl = name_list_ref4.copy()
-        name_list_pl = name_list_ref1.copy()
-        # name_list_pl = name_list_ref3.copy()
-        # name_list_pl = name_list_ref4.copy()
+        # name_list_refl = name_list_ref1.copy()
+        name_list_refl = name_list_ref3.copy()
+
+        # name_list_pl = name_list_ref1.copy()
+        name_list_pl = name_list_ref3.copy()
+
+        self.cboxes.setMinimumHeight(int(self.screen_height * 2.7)) # for one xas, two xrd
+        # self.cboxes.setMinimumHeight(int(self.screen_height * 2))  # for only one xrd
 
         for index in range(len(name_list_refl)):
             name_list_refl[index] = name_list_refl[index] + '_Refl'
             name_list_pl[index] = name_list_pl[index] + '_PL'
 
-        name_list_xrf = name_list_xrf1.copy()
-        # name_list_xrf = name_list_xrf3.copy()
+        # name_list_xrf = name_list_xrf1.copy()
+        name_list_xrf = name_list_xrf3.copy()
 
         poni_file1 = 'LaB6_p7keV_x2rol_adjusted.poni'
         poni_file2 = 'LaB6_13keV_x2rol_adjusted.poni'
-        file_directory = r"W:\balder\20221478\2023030108"
+        file_directory = r"Y:\balder\20221478\2023030108"
         refl_directory = file_directory # r"Y:\balder\20221478\2023030108"
         xrf_directory = file_directory
 
@@ -745,6 +744,83 @@ class ShowData(QMainWindow):
         self.fill_pnd(name_list, name_list_refl, name_list_pl, name_list_xrf,
                       poni_file1, poni_file2, time_intevals, file_directory,
                       refl_directory, xrf_directory)
+
+    # general
+    def fill_path_name_dict_general(self):
+        # xrd only, name and time
+        name_ls01 = [['example'],
+                     [],
+                     [],
+                     ]
+
+        # there is also a single xas measurement for each coat above.
+
+        time_intevals = [20] * len(name_ls01)
+
+        # one xas, two xrd
+        name_ls03 = [['HDC11_Sulf_scan_T_ramp_4'], # 19800-21300
+                     ['example2'],
+                     ['example3'],
+                     ]
+
+        for index in range(len(name_ls03)):
+            name_ls03[index].append(name_ls03[index][0] + '_eiger')
+            name_ls03[index].append(name_ls03[index][0] + '_eiger')
+
+        # two xas, two xrd
+        name_ls04 = [['example1'],
+                     ['example2'],
+                     ['example3'],
+                     ]
+
+        for index in range(len(name_ls04)):
+            name_ls04[index].append(name_ls04[index][0])
+            name_ls04[index].append(name_ls04[index][0] + '_eiger')
+            name_ls04[index].append(name_ls04[index][0] + '_eiger')
+
+        name_list_ref1 = []
+
+        name_list_ref3 = []
+
+        name_list_ref4 = []
+
+        name_list_xrf1 = []
+
+        name_list_xrf3 = []
+
+        # to change: name_list, poni_file, directory
+        # name_list = name_ls01 # one xrd
+        name_list = name_ls03  # one xas, two xrd
+
+        name_list_refl = name_list_ref1.copy()
+        # name_list_refl = name_list_ref3.copy()
+
+        name_list_pl = name_list_ref1.copy()
+        # name_list_pl = name_list_ref3.copy()
+
+        # self.cboxes.setMinimumHeight(int(self.screen_height * 2.7)) # for one xas, two xrd
+        self.cboxes.setMinimumHeight(int(self.screen_height))  # for only one xrd
+
+        for index in range(len(name_list_refl)):
+            name_list_refl[index] = name_list_refl[index] + '_Refl'
+            name_list_pl[index] = name_list_pl[index] + '_PL'
+
+        # name_list_xrf = name_list_xrf1.copy()
+        name_list_xrf = name_list_xrf3.copy()
+
+        poni_file1 = 'LaB6_19800eV.poni'
+        poni_file2 = ''
+        file_directory = r'W:\balder\20221329\2023042508'
+        refl_directory = file_directory
+        xrf_directory = file_directory
+
+        if name_list == name_ls01:
+            poni_file1 = poni_file2
+
+        self.fill_pnd(name_list, name_list_refl, name_list_pl, name_list_xrf,
+                      poni_file1, poni_file2, time_intevals, file_directory,
+                      refl_directory, xrf_directory)
+
 
     def choose_data_read_mode(self, action):
         for index in range(self.repeat):

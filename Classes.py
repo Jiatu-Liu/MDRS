@@ -40,7 +40,11 @@ import shutil
 from paramiko import SSHClient
 
 # sys.path.insert(0,r"C:\Users\jialiu\gsas2full\GSASII")
-gsas_path = os.path.join(os.path.expanduser('~'), 'gsas2full', 'GSASII')
+if os.path.expanduser('~').split('\\')[-1] == 'jusjus':
+    gsas_path = os.path.join('D:\ScientificSoftware\GSAS2', 'GSASII')
+else:
+    gsas_path = os.path.join(os.path.expanduser('~'), 'gsas2full', 'GSASII')
+
 sys.path.insert(0,gsas_path)
 import GSASIIindex
 import GSASIIspc
@@ -398,16 +402,22 @@ class TabGraph():
 
     def mouseMoved(self, evt): # surprise!
         self.mousePoint = self.tabplot.vb.mapSceneToView(evt) # not evt[0]
-        self.tabplot_label.setText("<span style='font-size: 10pt; color: black'> "
-                "x = %0.3f, y = %0.3f</span>" % (self.mousePoint.x(), self.mousePoint.y()))
+        has_image = False
         if len(self.tabplot.items) > 0: # read z value of an image
             for item in self.tabplot.items:
                 if hasattr(item, 'image'):
+                    has_image = True
                     i_x = int(self.mousePoint.x())
                     i_y = int(self.mousePoint.y())
                     if (0 <= i_x < item.image.shape[0]) and (0 <= i_y < item.image.shape[1]):
-                        self.tabplot_label_z.setText("<span style='font-size: 10pt; color: black'> z = %0.3f</span>" %
-                                                     item.image[i_x, i_y])
+                        # self.tabplot_label_z.setText("<span style='font-size: 10pt; color: black'> z = %0.3f</span>" %
+                        #                              item.image[i_x, i_y])
+                        self.tabplot_label_z.setText("<span> z = {:10.3f} </span>".format(item.image[i_x, i_y]))
+                        self.tabplot_label.setText("<span> x = {:10.3f}, y = {:10.3f} </span>".format
+                                                   (self.mousePoint.x(), self.mousePoint.y()))
+
+            if not has_image:
+                self.tabplot_label.setText("<span> x = %0.3f, y = %0.3f </span>" % (self.mousePoint.x(), self.mousePoint.y()))
 
     def gentab(self, dockobj, methodobj): # generate a tab for a docking graph
         if self.label == 'time series' and dockobj.label[0:3] == 'xrd':
@@ -416,11 +426,12 @@ class TabGraph():
             self.graphtab = pg.GraphicsLayoutWidget()
 
         dockobj.docktab.addTab(self.graphtab, self.label)
-        self.tabplot_label = pg.LabelItem(justify='right')
+        self.tabplot_label = pg.LabelItem(justify='left')
+        # self.tabplot_label.setFixedWidth(100)
         self.tabplot_label_z = pg.LabelItem(justify='left')
-        self.graphtab.addItem(self.tabplot_label)
-        self.graphtab.addItem(self.tabplot_label_z)
-        self.tabplot = self.graphtab.addPlot(row=1, col=0)
+        self.graphtab.addItem(self.tabplot_label_z, row=0, col=0)
+        self.graphtab.addItem(self.tabplot_label, row=1, col=0)
+        self.tabplot = self.graphtab.addPlot(row=2, col=0)
         # pg.SignalProxy(self.tabplot.scene().sigMouseMoved, rateLimit=60, slot=self.mouseMoved) # this is outdated!
         self.tabplot.scene().sigMouseMoved.connect(self.mouseMoved) # this is correct !
         self.tabplot.setLabel('bottom',methodobj.axislabel[self.label]['bottom'])
@@ -818,8 +829,8 @@ class XAS(Methods_Base):
                                           'Savitzky-Golay order (energy)': Paraclass(values=(1, 1, 7, 2)),
                                           'pre-edge para 1': Paraclass(values=(.01, 0, 1, .01)), # 0.01 of e0 - first point
                                           'pre-edge para 2': Paraclass(values=(.33, .05, .95, .01)), # 1/3 of e0 - pre 1
-                                          'post-edge para 2': Paraclass(values=(.01, 0, 1, .01)), # 0.01 of last point - e0
-                                          'post-edge para 1': Paraclass(values=(.33, .05, .95, .01))}, # 1/3 of post 1 - e0
+                                          'post-edge para 2': Paraclass(values=(.6, 0, 1, .01)), # 0.6 of last point - e0
+                                          'post-edge para 1': Paraclass(values=(.2, .05, .95, .01))}, # 0.2 of post 2 - e0
                            'normalized':{'rbkg':Paraclass(values=(1,1,3,.1)),
                                          'Savitzky-Golay window (time)':Paraclass(values=(1,1,100,2)),
                                          'Savitzky-Golay order (time)':Paraclass(values=(1, 1, 7, 2)),
@@ -1145,6 +1156,8 @@ class XAS(Methods_Base):
                 # print(str(index) + 'autobak')
             except:
                 print(str(index) + ' bad data, can not find background')
+                kmax = np.sqrt((Energy - e0) / 3.81).max()
+                self.grouplist[index].k = .05 * np.arange(int(1.01+kmax/.05), dtype='float64')
                 self.grouplist[index].chi = np.zeros(int(len(self.grouplist[index].k))) # will this work
         # do xftf when chi(r) or chi(r)-T is checked
         if self.checksdict['chi(k)'].isChecked() or self.checksdict['chi(r)-T'].isChecked():
@@ -1156,6 +1169,7 @@ class XAS(Methods_Base):
                      group=self.grouplist[index])
             except:
                 print(str(index) + ' bad data, can not find background')
+                self.grouplist[index].r = np.pi / .05 / 2048 * np.arange(2048 / 2) # according to xftf in larch
                 self.grouplist[index].chir_mag = np.zeros(int(len(self.grouplist[index].r)))
                 self.grouplist[index].chir_re = np.zeros(int(len(self.grouplist[index].r)))
                 self.grouplist[index].chir_im = np.zeros(int(len(self.grouplist[index].r)))
@@ -1634,27 +1648,31 @@ class XAS_INFORM_2(XAS):
             else:
                 try:
                     self.file = h5py.File(self.filename, 'r')
+
+                    self.filekeys = list(self.file.keys())
+                    timesecond_all = []
+                    if 'time' in self.filekeys:
+                        for timetext in range(len(self.file['time'])):
+                            timesecond = time.mktime(
+                                datetime.strptime(self.file['time'][timetext].decode(), '%Y-%m-%d %H:%M:%S.%f').timetuple())
+                            timesecond_all.append(timesecond)
+
+                        if len(timesecond_all) == 1: print('you do not need to process this xas data, go to xrd data directly!')
+                        else:
+                            # make for half time spectrum, as this is back and forth measurement
+                            timesecond_all.append(2 * timesecond_all[-1] - timesecond_all[-2])
+                            timesecond_array = np.array(timesecond_all)
+                            # watch out the following two lines
+                            # timesecond_start = np.sort(np.concatenate((timesecond_array[0:-2], (timesecond_array[0:-2] + timesecond_array[1:-1]) / 2)))
+                            # timesecond_end = np.sort(np.concatenate((timesecond_array[1:-1], (timesecond_array[0:-2] + timesecond_array[1:-1]) / 2)))
+                            timesecond_start = np.sort(np.concatenate((timesecond_array[0:-1], (timesecond_array[0:-1] + timesecond_array[1::]) / 2)))
+                            timesecond_end = np.sort(np.concatenate((timesecond_array[1::], (timesecond_array[0:-1] + timesecond_array[1::]) / 2)))
+                            self.entrytimesec = np.array([timesecond_start,timesecond_end]).T # so critical!!!
+
+                    # self.file.close()
+
                 except:
                     print('double check your file name')
-
-                self.filekeys = list(self.file.keys())
-                timesecond_all = []
-                if 'time' in self.filekeys:
-                    for timetext in range(len(self.file['time'])):
-                        timesecond = time.mktime(
-                            datetime.strptime(self.file['time'][timetext].decode(), '%Y-%m-%d %H:%M:%S.%f').timetuple())
-                        timesecond_all.append(timesecond)
-
-                    if len(timesecond_all) == 1: print('you do not need to process this xas data, go to xrd data directly!')
-                    # make for half time spectrum, as this is back and forth measurement
-                    timesecond_all.append(2 * timesecond_all[-1] - timesecond_all[-2])
-                    timesecond_array = np.array(timesecond_all)
-                    # watch out the following two lines
-                    # timesecond_start = np.sort(np.concatenate((timesecond_array[0:-2], (timesecond_array[0:-2] + timesecond_array[1:-1]) / 2)))
-                    # timesecond_end = np.sort(np.concatenate((timesecond_array[1:-1], (timesecond_array[0:-2] + timesecond_array[1:-1]) / 2)))
-                    timesecond_start = np.sort(np.concatenate((timesecond_array[0:-1], (timesecond_array[0:-1] + timesecond_array[1::]) / 2)))
-                    timesecond_end = np.sort(np.concatenate((timesecond_array[1::], (timesecond_array[0:-1] + timesecond_array[1::]) / 2)))
-                    self.entrytimesec = np.array([timesecond_start,timesecond_end]).T # so critical!!!
 
         # read in data
         if self.entrydata == []:  # Energy, I0, I1
@@ -1820,6 +1838,229 @@ class XAS_INFORM_2(XAS):
 
         return [self.entrytimesec[0, 0], self.entrytimesec[-1, 1]]
 
+class XAS_general(XAS):
+    def __init__(self, path_name_widget):
+        super(XAS_general, self).__init__(path_name_widget)
+        self.eiger_mark = '_eiger_data*'
+        self.rawdata_path = 'entry/data/data'
+        self.single_image_size = 1e5 # 100 KB, at least 900 kB per image
+
+        # rewrite for different mode of collection; feed read_data_index the whole data in memory: entrydata (xas, pl, refl),
+    # and/or a file in \process (xrd)
+    def time_range(self, winobj):
+        for key in winobj.path_name_widget:  # to distinguish xas_1, xas_2
+            if self.fileshort == winobj.path_name_widget[key]['raw file'].text():
+                if 'energy range (eV)' in winobj.path_name_widget[key] and \
+                        self.range == winobj.path_name_widget[key]['energy range (eV)'].text():
+                    self.method_name = key
+
+        # read in time
+        if self.entrytimesec == []:  # start, end time in seconds
+            tempfile = os.path.join(self.directory, 'process', self.fileshort + '_time_in_seconds')
+            if os.path.isfile(tempfile):
+                with open(tempfile, 'r') as f:
+                    self.entrytimesec = np.loadtxt(f)
+            else:
+                try:
+                    self.file = h5py.File(self.filename, 'r')
+
+                    self.filekeys = list(self.file.keys())
+                    timesecond_all = []
+                    if 'time' in self.filekeys:
+                        for timetext in range(len(self.file['time'])):
+                            timesecond = time.mktime(
+                                datetime.strptime(self.file['time'][timetext].decode(), '%Y-%m-%d %H:%M:%S.%f').timetuple())
+                            timesecond_all.append(timesecond)
+
+                        if len(timesecond_all) == 1: print('you do not need to process this xas data, there is only one data!')
+                        else:
+                            timesecond_all.append(2 * timesecond_all[-1] - timesecond_all[-2])
+                            timesecond_array = np.array(timesecond_all)
+                            eiger_files = sorted(glob.glob(os.path.join(self.directory, 'raw', self.fileshort + self.eiger_mark)))
+                            if len(eiger_files) != 0 and os.stat(eiger_files[0]).st_size > self.single_image_size:
+                                eiger_num = 0
+                                for eiger_f in eiger_files:
+                                    if os.stat(eiger_f).st_size > self.single_image_size:
+                                        with h5py.File(eiger_f, 'r') as f:
+                                            eiger_num += f[self.rawdata_path].shape[0]
+
+                                # expand time array according to number of eiger files
+                                self.xrd2xas_ratio = int(eiger_num / (len(timesecond_all) - 1))
+                                timesecond_start = timesecond_array[0:-1]
+                                timesecond_end = timesecond_array[1:]
+                                for i_extra in range(self.xrd2xas_ratio - 1):
+                                    timesecond_extra = (timesecond_array[0:-1] + timesecond_array[1::]) / self.xrd2xas_ratio * (i_extra + 1)
+                                    timesecond_start = np.concatenate(timesecond_start, timesecond_extra)
+                                    timesecond_end = np.concatenate(timesecond_end, timesecond_extra)
+
+                                timesecond_start = np.sort(timesecond_start)
+                                timesecond_end = np.sort(timesecond_end)
+                                self.entrytimesec = np.array([timesecond_start,timesecond_end]).T # so critical!!!
+
+                            else:
+                                print('xas only, no xrd file found')
+                                timesecond_start = timesecond_array[0:-1]
+                                timesecond_end = timesecond_array[1:]
+                                self.entrytimesec = np.array([timesecond_start, timesecond_end]).T  # so critical!!!
+
+                    # self.file.close() # should not close?
+
+                except:
+                    print('double check your file name')
+
+        # read in data
+        if self.entrydata == []:  # Energy, I0, I1
+            self.exportfile = os.path.join(self.exportdir, self.fileshort + '_spectrum_all.h5')
+            if os.path.isdir(self.exportdir) and os.path.isfile(self.exportfile):
+                f = h5py.File(self.exportfile, 'r')
+                if 'y min' in list(f.keys()):
+                    self.y_range = [f['y min'][()], f['y max'][()]]
+
+                for spectrum in list(f.keys()):
+                    if spectrum[0:8] == 'spectrum':
+                        data = np.zeros((f[spectrum].shape[0], f[spectrum].shape[1]), dtype = 'float32')
+                        f[spectrum].read_direct(data)
+                        self.entrydata.append(data.T)
+
+                f.close()
+                # for tempname in sorted(glob.glob(self.exportdir + '*_spectrum'),
+                #                        key=os.path.getmtime):  # in ascending order
+                #     with open(tempname, 'r') as f:
+                #         self.entrydata.append(np.loadtxt(f).transpose())
+
+            else:
+                if not os.path.isdir(self.exportdir):
+                    os.mkdir(self.exportdir)
+
+                if not os.path.isfile(tempfile):
+                    with open(tempfile, 'w') as f:
+                        np.savetxt(f, self.entrytimesec)
+
+                if not hasattr(self, 'file'):
+                    self.file = h5py.File(self.filename, 'r')
+
+                self.filekeys = list(self.file.keys()) # I0a, I0b, I1, It, energy
+                data_all = {}
+                for key in self.filekeys:
+                    if key != 'time':
+                        data = self.file[key]
+                        data_single = np.zeros((data.shape[0], data.shape[1]), dtype='float32')
+                        data.read_direct(data_single)
+                        data_all[key] = np.array(data_single)
+
+                if data:
+                    f = h5py.File(self.exportfile, 'w')
+                    data4xrd = []
+
+                    # if it is only up energy scan
+                    temp = data_all['energy'][0,:]
+                    only_up = False
+                    # if it is not around the center, so set a loose condition: above 3 / 4
+                    if np.where(temp == temp.max())[0][0] >= temp.shape[0] * 3 / 4:
+                        only_up = True
+                        print(only_up)
+                    # added above
+                    print_data = True
+                    for index in range(data.shape[0]): # output format has to be Energy, I0, I1
+
+                        if only_up: # only up scan
+                            data_range = self.sel_by_energy_range(data_all['energy'][index, :])
+                            data_temp = np.array([
+                                data_all['energy'][index, data_range],  # E0
+                                data_all['I0a'][index, data_range] + data_all['I0b'][index, data_range], # I0
+                                data_all['I1a'][index, data_range] + data_all['I1b'][index, data_range]  # I1
+                                ])
+                            for t in range(self.xrd2xas_ratio):
+                                self.entrydata.append(data_temp) # this is to trick the self.entrytimesec
+                                f.create_dataset('spectrum_{:04d}'.format(self.xrd2xas_ratio * index + t), data=data_temp.T)
+
+                            if print_data:
+                                print(data_range)
+                                # print(data_temp)
+                                print_data = False
+
+                            data4xrd.append(np.array([data_all['energy'][index, 0],  # E0
+                                                      data_all['I0a'][index, 0] + data_all['I0b'][index, 0],  # I0
+                                                      data_all['I1a'][index, 0] + data_all['I1b'][index, 0]]).T  # I1
+                                            )
+
+                        else: # up and down scan
+                            if data.shape[1] % 2 == 0:
+                                half_index = int(data.shape[1] / 2 - 1)
+                                back_sel = np.s_[data.shape[1] - 1:half_index:-1]
+
+                            else: # most of data is odd number of energy points
+                                half_index = int((data.shape[1] + 1) / 2 - 1) # middle point by index
+                                back_sel = np.s_[data.shape[1] - 1:half_index:-1] # not include the middle point, because the it is xrd!
+
+                            data_range = self.sel_by_energy_range(data_all['energy'][index, 0:half_index + 1])
+
+                            try:
+                                data_half_1 = np.array([data_all['energy'][index, data_range],  # E0
+                                                      data_all['I0a'][index, data_range] + data_all['I0b'][index, data_range],  # I0
+                                                      data_all['I1'][index, data_range]])  # I1
+                            except:
+                                data_half_1 = np.array([data_all['energy'][index, data_range],  # E0
+                                                        data_all['I0a'][index, data_range] + data_all['I0b'][index, data_range], # I0
+                                                        data_all['I1a'][index, data_range] + data_all['I1b'][index, data_range]])  # I1
+
+                            self.entrydata.append(data_half_1)
+                            f.create_dataset('spectrum_{:04d}'.format(index * 2), data=data_half_1.T)
+
+                            data_range = self.sel_by_energy_range(data_all['energy'][index, back_sel])
+
+                            try:
+                                data_half_2 = np.array([data_all['energy'][index, back_sel][data_range],  # E0
+                                                      data_all['I0a'][index, back_sel][data_range] +
+                                                      data_all['I0b'][index, back_sel][data_range],  # I0
+                                                      data_all['I1'][index, back_sel][data_range]])  # I1
+                            except:
+                                data_half_2 = np.array([data_all['energy'][index, back_sel][data_range],  # E0
+                                                        data_all['I0a'][index, back_sel][data_range] +
+                                                        data_all['I0b'][index, back_sel][data_range],  # I0
+                                                        data_all['I1a'][index, back_sel][data_range] +
+                                                        data_all['I1b'][index, back_sel][data_range]])  # I1
+
+                            self.entrydata.append(data_half_2)
+                            f.create_dataset('spectrum_{:04d}'.format(index * 2 + 1), data=data_half_2.T)
+
+                            # extract data for xrd normalization
+                            try:
+                                # the first xrd
+                                data4xrd.append(np.array([data_all['energy'][index, 0],  # E0
+                                                           data_all['I0a'][index, 0] + data_all['I0b'][index, 0],  # I0
+                                                           data_all['I1'][index, 0]]).T  # I1
+                                                 )
+                                # the second xrd
+                                data4xrd.append(np.array([data_all['energy'][index, half_index],  # E0
+                                                          data_all['I0a'][index, half_index] + data_all['I0b'][index, half_index],  # I0
+                                                          data_all['I1'][index, half_index]]).T  # I1
+                                                )
+                            except:
+                                # the first xrd
+                                data4xrd.append(np.array([data_all['energy'][index, 0],  # E0
+                                                          data_all['I0a'][index, 0] + data_all['I0b'][index, 0],  # I0
+                                                          data_all['I1a'][index, 0] + data_all['I1b'][index, 0]]).T  # I1
+                                                )
+                                # the second xrd
+                                data4xrd.append(np.array([data_all['energy'][index, half_index],  # E0
+                                                          data_all['I0a'][index, half_index] + data_all['I0b'][index, half_index],  # I0
+                                                          data_all['I1a'][index, half_index] + data_all['I1b'][index, 0]]).T  # I1
+                                                )
+
+                    f.close()
+
+                else:
+                    print('data not read in')
+
+                # output data for xrd
+                with open(os.path.join(self.directory, 'process', self.fileshort + '_xas4xrd'), 'w') as f:
+                    np.savetxt(f, np.array(data4xrd))
+
+            self.load_group(winobj)
+
+        return [self.entrytimesec[0, 0], self.entrytimesec[-1, 1]]
+
 class XAS_BATTERY_1(XAS):
     def __init__(self, path_name_widget):
         super(XAS_BATTERY_1, self).__init__(path_name_widget)
@@ -1910,6 +2151,7 @@ class XRD(Methods_Base):
         self.availablecurves['segregation degree-T'] = ['pointer']
         self.directory = path_name_widget['directory'].text()
         self.fileshort = path_name_widget['raw file'].text()
+        self.fileshort_xas = self.fileshort[:self.fileshort.index('_eiger')]
         self.intfile_appendix = path_name_widget['integration file appendix'].text()
         self.ponifile = os.path.join(self.directory, 'process', path_name_widget['PONI file'].text())
         if os.path.isfile(self.ponifile):
@@ -2032,7 +2274,8 @@ class XRD(Methods_Base):
         else:
             print('reload xrd!')
 
-        if ('20221562' in self.directory.split('\\')) or ('20221478' in self.directory.split('\\')):
+        dir_split = self.directory.split('\\') + self.directory.split('_')
+        if ('20221562' in dir_split) or ('20221478' in dir_split):
             self.exportdir = os.path.join(self.directory, 'process', self.fileshort + '_{}keV'.format(int(energy)))
             self.exportfile = os.path.join(self.exportdir,self.fileshort + '_{}keV'.format(int(energy)) + self.intfile_appendix)
         else:
@@ -2223,8 +2466,8 @@ class XRD(Methods_Base):
             print('check network and password')
         else:
             cmd = "sbatch --export=ALL,argv=\'%s %s %s %s %s\' " \
-                  "/mxn/home/balder-user/BalderProcessingScripts/balder-xrd-processing/submit_stream_MR.sh" % (
-                      clusterfolder, self.fileshort[0:-6], ponifile_short, self.rawdata_path, self.eiger_mark)
+                  "/mxn/home/balder-user/BalderProcessingScripts/balder-xrd-processing/submit_stream_deglitch.sh" % (
+                      clusterfolder, self.fileshort[:self.fileshort.index('_eiger')], ponifile_short, self.rawdata_path, self.eiger_mark)
 
             client.exec_command('mv ./*.log ./azint_logs')
             stdin, stdout, stderr = client.exec_command(cmd)
@@ -2286,9 +2529,9 @@ class XRD(Methods_Base):
         resultfile.create_dataset('normresult', data=np.array(norm_result))
         resultfile.close()
         # txt
-        for k in range(0,len(norm_result),interval):
-            with open(os.path.join(self.exportdir, self.fileshort + '_data{:04d}.xy'.format(k)), 'w') as f:
-                np.savetxt(f, np.array([data_2theta, norm_result[k]]).transpose())
+        # for k in range(0,len(norm_result),interval):
+        #     with open(os.path.join(self.exportdir, self.fileshort + '_data{:04d}.xy'.format(k)), 'w') as f:
+        #         np.savetxt(f, np.array([data_2theta, norm_result[k]]).transpose())
 
     def interpolate_data(self, winobj):
         # to densify data along q to make following peaks cataloguing more effective incase q is not enough
@@ -2763,9 +3006,9 @@ class XRD(Methods_Base):
         # print(peaks)
         # output d space and intensity for index
         d_space_file = os.path.join(self.exportdir, self.fileshort + '_d_space_phase_%i' % phase_num) # the actual phase number is phase_num - 1
-        with open(d_space_file, 'w') as f:
-            np.savetxt(f, peaks[:,[7,1]], '%-10.5f', header='index_d index_I') # must keep the order
-            print('out put d space file for phase %i' % phase_num)
+        # with open(d_space_file, 'w') as f:
+        np.savetxt(d_space_file, peaks[:,[7,1]], '%-10.5f', header='index_d index_I') # must keep the order
+        print('out put d space file for phase %i' % phase_num)
 
         bravais = [0] * len(self.bravaisNames)
         for index in range(tabobj.cbox_layout.count()): # get bravais
@@ -3644,7 +3887,7 @@ class XRD_INFORM_2(XRD): # 20220660
 
     def read_data_index(self, index): # for raw img
         files = glob.glob(os.path.join(self.directory,'raw',
-                                        self.fileshort[0:-6] + self.eiger_mark))
+                                        self.fileshort[:self.fileshort.index('_eiger')] + self.eiger_mark))
         # if len(self.raw_tot) == 0:
         #     tot_num = [0]
         #     for fi in files:
@@ -3677,7 +3920,7 @@ class XRD_INFORM_2(XRD): # 20220660
         # rawimg = np.zeros((rawdata.shape[1], rawdata.shape[2]), dtype='uint32')
 
         # the following file stores the data needed for normalizationn of xrd according to I0 and mu d
-        data4xrd_file = os.path.join(self.directory, 'process', self.fileshort[0:-6] + '_xas4xrd')
+        data4xrd_file = os.path.join(self.directory, 'process', self.fileshort[:self.fileshort.index('_eiger')] + '_xas4xrd')
 
         if os.path.isfile(data4xrd_file):
             # the xrd data point is always the first one and the middle one of a xas spectrum
@@ -3707,32 +3950,7 @@ class XRD_INFORM_2(XRD): # 20220660
 
             if not os.path.isdir(self.exportdir): os.mkdir(self.exportdir)
 
-            # if np.abs(self.wavelength - wavelength) > .00001:
-            #     ponifile_update = os.path.join(self.exportdir, self.fileshort + '_{}eV.poni'.format(int(E0)))
-            #     ponifile_short = ponifile_update.split('\\')[-1]
-            #     with open(self.ponifile, 'r') as f:
-            #         poni = f.readlines()
-            #
-            #     poni[-1] = 'Wavelength: {:16e}'.format(self.wavelength * 1e-10)
-            #
-            #     with open(ponifile_update, 'w') as f:
-            #         f.writelines(poni)
-            #
-            # else:
-            #     ponifile_short = self.ponifile.split('\\')[-1]
-            #
-            # ai = AzimuthalIntegrator(ponifile_short, (1065, 1030), 75e-6, 4, [3000, ], solid_angle=True)
-            # for index in index_sel:
-            #     rawdata.read_direct(rawimg, source_sel=np.s_[index, :, :])
-            #     mask[rawimg == 2 ** 32 - 1] = 1
-            #     intdata = ai.integrate(rawimg, mask=mask)[0] # time consuming
-            #     result.append(intdata)
-            #     norm_result.append(intdata / I0[index] / (np.log(I0[index] / I1[index]) + 2.02))
-            #     self.prep_progress.setValue(int((index + 1) / index_sel.shape[0] * 100))
-            #
-            # self.output_intg(ai.q, result, norm_result, self.wavelength)
-
-            clusterfile = os.path.join(self.directory, 'process', self.fileshort[0:-6] + self.intfile_appendix)
+            clusterfile = os.path.join(self.directory, 'process', self.fileshort[:self.fileshort.index('_eiger')] + self.intfile_appendix)
             if not os.path.isfile(clusterfile):
                 self.integrate_Cluster(self.ponifile.split('\\')[-1], clusterfile)
                 # with h5py.File(clusterfile, 'r+') as f:
@@ -3818,7 +4036,7 @@ class XRD_INFORM_2(XRD): # 20220660
                 # if hasxas: self.entrytimesec = winobj.methodict[self.sync_xas_name].entrytimesec
                 # else: print('you need to import a bundled XAS data')
 
-                xas_time = os.path.join(self.directory, 'process', self.fileshort[0:-6] + '_time_in_seconds')
+                xas_time = os.path.join(self.directory, 'process', self.fileshort[:self.fileshort.index('_eiger')] + '_time_in_seconds')
                 # with open(self.ponifile, 'r') as f:
                 #     wavelength = float(f.readlines()[-1].splitlines()[0].partition(' ')[2])
                 #
@@ -3830,9 +4048,9 @@ class XRD_INFORM_2(XRD): # 20220660
                 if os.path.isfile(xas_time):
                     entrytimesec = np.loadtxt(xas_time)
                     with open(self.ponifile, 'r') as f:
-                        wavelength = float(f.readlines()[-1].splitlines()[0].partition(' ')[2])
+                        wavelength = float(f.readlines()[-1].splitlines()[0].partition(' ')[2]) * 1e10
 
-                    if wavelength < self.energy_div:  # low or high energy
+                    if ev2nm / wavelength * 10 < self.energy_div:  # low or high energy
                         self.entrytimesec = entrytimesec[0::2,:]
                     else:
                         self.entrytimesec = entrytimesec[1::2,:]
@@ -3847,6 +4065,148 @@ class XRD_INFORM_3(XRD_INFORM_2):
         self.energy_div = 10000
         self.eiger_mark = '_eiger_data*'
         self.rawdata_path = 'entry/data/data'
+
+class XRD_general(XRD): # 20220660
+    def __init__(self, path_name_widget):
+        super(XRD_general, self).__init__(path_name_widget)
+        self.single_image_size = 1e5 # 100 kB
+        self.eiger_mark = '_eiger_data*'
+        self.rawdata_path = 'entry/data/data'
+        self.absorp_corr = 2 # correct for absorption for norm results after integration
+        if self.intfile_appendix == '_resultFile.h5': # this mode use the cluster
+            self.intfile_appendix = '_resultCluster.h5'
+            self.exportfile.replace('File', 'Cluster')
+
+        xas_fn = os.path.join(self.directory, 'raw', self.fileshort_xas + '.h5')
+        if os.path.exists(xas_fn):
+            data4xrd_file = os.path.join(self.directory, 'process', self.fileshort_xas + '_xas4xrd')
+            if os.path.isfile(data4xrd_file):
+                with open(data4xrd_file, 'r') as f:
+                    data4xrd = np.loadtxt(f)
+
+            with h5py.File(xas_fn, 'r') as f:
+                self.xrd2xas_ratio = data4xrd.shape[0] / f['energy'].shape[0]
+                if self.xrd2xas_ratio > 1:
+                    energy = np.zeros(f['energy'].shape[1], dtype=float)
+                    f['energy'].read_direct(energy, source_sel=np.s_[0,:])
+                    self.energy_div = (energy.max() + energy.min()) / 2
+
+        else:
+            print('there is no bundled xas file, unfortunately!')
+
+    def read_data_index(self, index): # for raw img
+        files = sorted(glob.glob(os.path.join(self.directory,'raw',
+                                        self.fileshort[:self.fileshort.index('_eiger')] + self.eiger_mark)))
+
+        if hasattr(self, 'energy_div'):
+            if ev2nm / self.wavelength * 10 > self.energy_div: index = index * 2 + 1
+            else: index = index * 2
+
+        if len(self.raw_tot) == 0:
+            tot_num = [0]
+            for fi in files:
+                with h5py.File(fi,'r') as f:
+                    tot_num.append(f[self.rawdata_path].shape[0] + tot_num[-1])
+
+            self.raw_tot = tot_num
+
+        for i in range(len(self.raw_tot) - 1):
+            if self.raw_tot[i] <= index < self.raw_tot[i + 1]:
+                if os.stat(files[i]).st_size > self.single_image_size:
+                    with h5py.File(files[i], 'r') as f:
+                    # with h5py.File(files[0], 'r') as f:
+                        rawdata = f[self.rawdata_path]
+                        self.rawdata = np.zeros((rawdata.shape[1],rawdata.shape[2]), dtype='uint32')
+                        rawdata.read_direct(self.rawdata, source_sel=np.s_[index - self.raw_tot[i], :, :])
+                        # rawdata.read_direct(self.rawdata, source_sel=np.s_[index, :, :])
+                        self.rawdata = np.log10(self.rawdata).transpose()
+
+    def plot_from_prep(self, winobj):  # do integration; some part should be cut out to make a new function
+        winobj.setslider()
+        data4xrd_file = os.path.join(self.directory, 'process', self.fileshort[:self.fileshort.index('_eiger')] + '_xas4xrd')
+
+        if os.path.isfile(data4xrd_file):
+            with open(data4xrd_file, 'r') as f:
+                data4xrd = np.loadtxt(f)
+
+            I0 = data4xrd[:, 1]
+            I1 = data4xrd[:, 2]
+
+            with open(self.ponifile, 'r') as f:
+                wavelength = float(f.readlines()[-1].splitlines()[0].partition(' ')[2]) * 1e10 # in Angstrom
+
+            if hasattr(self, 'energy_div'):
+                if ev2nm / wavelength * 10 < self.energy_div: # low or high energy
+                    index_sel = np.arange(0,I0.shape[0],2)
+                    E0 = data4xrd[2,0] # was [0,0] before, but is not always correct !
+                else:
+                    index_sel = np.arange(1, I0.shape[0] + 1, 2)
+                    E0 = data4xrd[1,0]
+
+            else:
+                index_sel = np.arange(0, I0.shape[0])
+                E0 = data4xrd[2,0]
+
+            self.wavelength = ev2nm / E0 * 10 # in Angstrom
+
+            if not os.path.isdir(self.exportdir): os.mkdir(self.exportdir)
+
+            clusterfile = os.path.join(self.directory, 'process', self.fileshort[:self.fileshort.index('_eiger')] + self.intfile_appendix)
+            if not os.path.isfile(clusterfile):
+                self.integrate_Cluster(self.ponifile.split('\\')[-1], clusterfile)
+
+            with h5py.File(clusterfile, 'r') as f:
+                q = np.zeros(f['q'].shape[-1], dtype='float32')
+                f['q'].read_direct(q)
+                wavelength = f['wavelength'][()] * 1e10  # critical, in Angstrom
+                raw_result = np.zeros((f['results'].shape[0], q.shape[0]), dtype='float32')
+                f['results'].read_direct(raw_result)
+
+            self.output_intg(q * wavelength / self.wavelength * 10, # now in inverse nm, to be consistent with olde files
+                             raw_result[index_sel, :],
+                             raw_result[index_sel, :] / I0[index_sel, None] / \
+                             (np.log(I0[index_sel, None] / I1[index_sel, None]) + self.absorp_corr), # so so critical
+                             self.wavelength, 50)
+
+            self.plot_from_load(winobj)
+
+        else:
+            print('you need to process a bundled XAS data first')
+
+        # file.close()
+
+    def time_range(self, winobj):
+        for key in winobj.path_name_widget: # to distinguish xrd_1, xrd_2
+            if self.fileshort == winobj.path_name_widget[key]['raw file'].text():
+                if 'PONI file' in winobj.path_name_widget[key]:
+                    if self.ponifile.split('\\')[-1] == winobj.path_name_widget[key]['PONI file'].text():
+                        self.method_name = key
+
+        if self.entrytimesec == []:
+            if os.path.isfile(self.exportfile):
+                with h5py.File(self.exportfile, 'r') as f:
+                    self.entrytimesec = np.zeros((f['info/abs_time_in_sec'].shape[0], f['info/abs_time_in_sec'].shape[1]), dtype='float')
+                    f['info/abs_time_in_sec'].read_direct(self.entrytimesec)
+            else:
+                xas_time = os.path.join(self.directory, 'process', self.fileshort[:self.fileshort.index('_eiger')] + '_time_in_seconds')
+                if os.path.isfile(xas_time):
+                    entrytimesec = np.loadtxt(xas_time)
+                    with open(self.ponifile, 'r') as f:
+                        wavelength = float(f.readlines()[-1].splitlines()[0].partition(' ')[2]) * 1e10  # in Angstrom
+
+                    if hasattr(self, 'energy_div'):
+                        if ev2nm / wavelength * 10 < self.energy_div:  # low or high energy
+                            self.entrytimesec = entrytimesec[0::2,:]
+                        else:
+                            self.entrytimesec = entrytimesec[1::2,:]
+
+                    else:
+                        self.entrytimesec = entrytimesec
+
+                else:
+                    print('you need to process a bundled XAS data first')
+
+        return [self.entrytimesec[0, 0], self.entrytimesec[-1, 1]]
 
 class XRD_INFORM_2_ONLY(XRD_INFORM_2):
     def __init__(self, path_name_widget):
@@ -3872,7 +4232,7 @@ class XRD_INFORM_2_ONLY(XRD_INFORM_2):
         winobj.setslider()
         # norm_result = []
         # the following file stores the data needed for normalizationn of xrd according to I0 and mu d
-        data4xrd_file = os.path.join(self.directory, 'raw', self.fileshort[0:-6] + '.h5')
+        data4xrd_file = os.path.join(self.directory, 'raw', self.fileshort[:self.fileshort.index('_eiger')] + '.h5')
 
         if os.path.isfile(data4xrd_file):
             if os.stat(data4xrd_file).st_size > 1000: # Bytes
@@ -3916,7 +4276,7 @@ class XRD_INFORM_2_ONLY(XRD_INFORM_2):
                 #
                 # else:
                 #     ponifile_short = self.ponifile.split('\\')[-1]
-                clusterfile = os.path.join(self.directory, 'process', self.fileshort[0:-6] + self.intfile_appendix)
+                clusterfile = os.path.join(self.directory, 'process', self.fileshort[:self.fileshort.index('_eiger')] + self.intfile_appendix)
 
                 if not os.path.isfile(clusterfile): self.integrate_Cluster(self.ponifile.split('\\')[-1], clusterfile)
 
@@ -3947,7 +4307,7 @@ class XRD_INFORM_2_ONLY(XRD_INFORM_2):
                 print('time is based on the xrd file time and predefined time intervals')
 
                 if not os.path.isdir(self.exportdir): os.mkdir(self.exportdir)
-                clusterfile = os.path.join(self.directory, 'process', self.fileshort[0:-6] + self.intfile_appendix)
+                clusterfile = os.path.join(self.directory, 'process', self.fileshort[:self.fileshort.index('_eiger')] + self.intfile_appendix)
                 if not os.path.isfile(clusterfile): self.integrate_Cluster(self.ponifile.split('\\')[-1], clusterfile)
                 with h5py.File(clusterfile, 'r') as f:
                     q = np.zeros(f['q'].shape[-1], dtype='float32')
@@ -3986,7 +4346,7 @@ class XRD_INFORM_2_ONLY(XRD_INFORM_2):
                     self.entrytimesec = np.zeros((f['info/abs_time_in_sec'].shape[0], f['info/abs_time_in_sec'].shape[1]), dtype='float')
                     f['info/abs_time_in_sec'].read_direct(self.entrytimesec)
             else: # read in entrytimesec from xas raw file
-                data4xrd_file = os.path.join(self.directory, 'raw', self.fileshort[0:-6] + '.h5')
+                data4xrd_file = os.path.join(self.directory, 'raw', self.fileshort[:self.fileshort.index('_eiger')] + '.h5')
                 if os.path.isfile(data4xrd_file):
                     if os.stat(data4xrd_file).st_size > 1000:
                         with h5py.File(data4xrd_file, 'r') as f:
@@ -4239,7 +4599,7 @@ class Optic(Methods_Base):
         self.fileshort = path_name_widget['raw file'].text()
         self.exportdir = os.path.join(self.directory, 'process', self.fileshort + '_Optic_data')
         if not os.path.isdir(self.exportdir): os.mkdir(self.exportdir)
-        self.aligned = False
+        # self.aligned = False
         self.pre_ts_btn_text = 'Align data to time(Ctrl+D)'
         # if int(self.directory.split('202')[1][0]) > 1: # new spectrometer after 2021 (202 1)
         self.channelnum = 2068
@@ -4296,7 +4656,8 @@ class Optic(Methods_Base):
                 # for index in range(self.data.shape[0]):
                 #     self.entrytimesec.append(start_time + datatime[index, 0] / 1000 + [0, datatime[index, 1] / 1000])
 
-                self.entrytimesec = np.array(self.entrytimesec)  # , dtype=int)
+                self.entrytimesec = np.array(self.entrytimesec)
+                self.entrytimesec_original = self.entrytimesec.copy()
                 with h5py.File(datafile, 'a') as f:
                     f.create_dataset('time in seconds', data=self.entrytimesec, dtype='float64')
                     # here it will automatically choose a dtype which is float64!!! so critical!!!
@@ -4339,9 +4700,9 @@ class Optic(Methods_Base):
             # self.to_time = time.mktime(
             #     datetime.strptime(winobj.path_name_widget[self.method_name]['to time'].text(), '%Y-%m-%dT%H:%M:%S').timetuple())  # in second
             # time_diff = self.entrytimesec[self.align_data, 0] - self.to_time
-            time_diff = int(winobj.path_name_widget[self.method_name]['time diff in sec'].text())
-            self.entrytimesec = self.entrytimesec - time_diff
-            self.aligned = True
+            time_diff = float(winobj.path_name_widget[self.method_name]['time diff in sec'].text())
+            self.entrytimesec = self.entrytimesec_original - time_diff
+            # self.aligned = True
             winobj.setslider()
         except Exception as e:
             print(e)
@@ -4426,11 +4787,10 @@ class PL(Optic):
             if len(self.dark) > 0:
                 if 'pl_dark' in list(f.keys()): del f['pl_dark']
                 f.create_dataset('pl_dark', data=np.array(self.dark), dtype='float32')
-
-            if hasattr(self, 'aligned'):
-                if self.aligned:
-                    del f['time in seconds']
-                    f.create_dataset('time in seconds', self.entrytimesec)
+            # if hasattr(self, 'aligned'):
+            #     if self.aligned:
+                del f['time in seconds']
+                f.create_dataset('time in seconds', self.entrytimesec)
 
     def plot_from_load(self, winobj):
         winobj.setslider()
@@ -4471,6 +4831,7 @@ class PL(Optic):
                     f['raw'].read_direct(self.data)
                     self.entrytimesec = np.zeros((f['time in seconds'].shape[0], 2), dtype='float64')
                     f['time in seconds'].read_direct(self.entrytimesec)
+                    self.entrytimesec_original = self.entrytimesec.copy()
                     if 'y min' in list(f.keys()):
                         self.y_range = [f['y min'][()], f['y max'][()]]
 
@@ -4546,11 +4907,10 @@ class Refl(Optic):
             if len(self.refcandidate) > 0:
                 if 'refl_ref' in list(f.keys()): del f['refl_ref']
                 f.create_dataset('refl_ref', data=np.array(self.refcandidate), dtype='float32')
-
-            if hasattr(self, 'aligned'):
-                if self.aligned:
-                    del f['time in seconds']
-                    f.create_dataset('time in seconds', self.entrytimesec)
+            # if hasattr(self, 'aligned'):
+            #     if self.aligned:
+                del f['time in seconds']
+                f.create_dataset('time in seconds', self.entrytimesec)
 
     def load_norm(self, winobj):
         norm_file = self.linewidgets['raw']['load reference from'].text()
@@ -4603,6 +4963,7 @@ class Refl(Optic):
                     self.entrytimesec = np.zeros((f['time in seconds'].shape[0], f['time in seconds'].shape[1]), dtype='float64')
                     # how important is this dtype!!! as the abs time in seconds is a large number, you need to choose 64!!! so critical!!!
                     f['time in seconds'].read_direct(self.entrytimesec)
+                    self.entrytimesec_original = self.entrytimesec.copy()
                     if 'y min' in list(f.keys()):
                         self.y_range = [f['y min'][()], f['y max'][()]]
 
@@ -4649,7 +5010,7 @@ class XRF(Methods_Base):
         self.availablecurves['time series'] = ['pointer']
         self.availablecurves['fit-T'] = ['Height', 'FWHM']
         self.axislabel = {'raw': {'bottom': 'channels',
-                                  'left': 'log10(intensity)'},
+                                  'left': 'intensity'},
                           'time series': {'bottom': 'channels',
                                           'left': 'Data number'},
                           'fit-T': {'bottom': 'Data number',
@@ -4662,15 +5023,18 @@ class XRF(Methods_Base):
                                         'y min': '0',
                                         'y max': '1000', }}
 
-        self.align_data = int(path_name_widget['align data number'].text())
-        self.to_time = time.mktime(
-            datetime.strptime(path_name_widget['to time'].text(), '%Y-%m-%dT%H:%M:%S').timetuple())  # in second
-        self.aligned = False
+        # self.align_data = int(path_name_widget['align data number'].text())
+        # self.to_time = time.mktime(
+        #     datetime.strptime(path_name_widget['to time'].text(), '%Y-%m-%dT%H:%M:%S').timetuple())  # in second
+        # self.aligned = False
         self.ini_data_curve_color()  # this has to be at the end line of each method after a series of other attributes
 
     def read_data_time(self, datafile):
         if os.path.exists(os.path.join(self.directory, 'raw', 'XRF')):
-            filenames = sorted(glob.glob(os.path.join(self.directory, 'raw', 'XRF', self.fileshort + '*')))
+            # filenames = sorted(glob.glob(os.path.join(self.directory, 'raw', 'XRF', self.fileshort + '*')))
+            # since there is some disruptions within in data order, quite shitty!
+            filenames = sorted(glob.glob(os.path.join(self.directory, 'raw', 'XRF', self.fileshort + '*')),
+                               key=lambda t: os.stat(t).st_mtime)
 
         data = []
         datatime = []
@@ -4702,9 +5066,12 @@ class XRF(Methods_Base):
 
     def plot_from_prep(self, winobj):
         try:
-            time_diff = int(winobj.path_name_widget[self.method_name]['time diff in sec'].text())
-            self.entrytimesec = self.entrytimesec - time_diff
-            self.aligned = True
+            # time_diff = float(winobj.path_name_widget[self.method_name]['time diff in sec'].text())
+            # self.entrytimesec = self.entrytimesec - time_diff
+            # self.entrytimesec_original = self.entrytimesec.copy()
+            time_diff = float(winobj.path_name_widget[self.method_name]['time diff in sec'].text())
+            self.entrytimesec = self.entrytimesec_original - time_diff
+            # self.aligned = True
             winobj.setslider()
         except Exception as e:
             print(e)
@@ -4782,6 +5149,7 @@ class XRF(Methods_Base):
                     self.entrytimesec = np.zeros((f['time in seconds'].shape[0], f['time in seconds'].shape[1]), dtype='float64')
                     # how important is this dtype!!! as the abs time in seconds is a large number, you need to choose 64!!! so critical!!!
                     f['time in seconds'].read_direct(self.entrytimesec)
+                    self.entrytimesec_original = self.entrytimesec.copy()
                     if 'y min' in list(f.keys()):
                         self.y_range = [f['y min'][()], f['y max'][()]]
 
